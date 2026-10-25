@@ -7,11 +7,14 @@ interface WalletContextValue {
   transactions: Transaction[];
   /** Credits the wallet and inserts a matching "Wallet Top-up" transaction at the top of history. */
   addDeposit: (usdcAmount: number) => Transaction;
+  /** Debits the wallet for a merchant payment. Returns null (no-op) if the balance is insufficient. */
+  addPayment: (usdcAmount: number, methodLabel: string) => Transaction | null;
 }
 
 const WalletContext = createContext<WalletContextValue | null>(null);
 
 let depositSeq = 0;
+let paymentSeq = 0;
 
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [balanceUsdc, setBalanceUsdc] = useState(MOCK_BALANCE_USDC);
@@ -34,8 +37,26 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     return txn;
   };
 
+  const addPayment = (usdcAmount: number, methodLabel: string): Transaction | null => {
+    if (usdcAmount > balanceUsdc) return null;
+    paymentSeq += 1;
+    const txn: Transaction = {
+      id: `payment_${Date.now()}_${paymentSeq}`,
+      merchant: `${methodLabel} Payment`,
+      category: "shopping",
+      amountUsdc: usdcAmount,
+      kind: "debit",
+      date: new Date().toISOString(),
+      status: "completed",
+      reference: `SPX-${7000 + paymentSeq}-PY`,
+    };
+    setTransactions((prev) => [txn, ...prev]);
+    setBalanceUsdc((prev) => prev - usdcAmount);
+    return txn;
+  };
+
   return (
-    <WalletContext.Provider value={{ balanceUsdc, transactions, addDeposit }}>
+    <WalletContext.Provider value={{ balanceUsdc, transactions, addDeposit, addPayment }}>
       {children}
     </WalletContext.Provider>
   );
