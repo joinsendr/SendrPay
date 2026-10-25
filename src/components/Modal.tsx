@@ -1,14 +1,16 @@
 import { useEffect } from "react";
-import { X } from "lucide-react";
+import { X, ChevronLeft } from "lucide-react";
 
 export function Modal({
   open,
   onClose,
+  onBack,
   title,
   children,
 }: {
   open: boolean;
   onClose: () => void;
+  onBack?: () => void;
   title: string;
   children: React.ReactNode;
 }) {
@@ -33,7 +35,19 @@ export function Modal({
       />
       <div className="relative z-10 w-full max-w-sm animate-fade-up rounded-t-3xl border border-neutral-200 bg-white p-5 shadow-xl sm:rounded-3xl">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-neutral-900">{title}</h2>
+          <div className="flex items-center gap-1.5">
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                aria-label="Back"
+                className="flex h-8 w-8 -ml-1.5 items-center justify-center rounded-full text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+            )}
+            <h2 className="text-base font-semibold text-neutral-900">{title}</h2>
+          </div>
           <button
             type="button"
             onClick={onClose}
