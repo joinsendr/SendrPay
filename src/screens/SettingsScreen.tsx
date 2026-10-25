@@ -5,7 +5,7 @@ import {
 import { ScreenHeader } from "../components/ScreenHeader";
 import { Modal } from "../components/Modal";
 
-const CURRENCIES = ["USD", "INR"] as const;
+const CURRENCIES = ["USD", "INR", "CAD", "EUR", "GBP", "CHF"] as const;
 
 function InfoRow({
   Icon,
