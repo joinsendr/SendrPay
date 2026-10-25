@@ -5,10 +5,11 @@ import { PrimaryActions } from "../components/PrimaryActions";
 import { TransactionHistory } from "../components/TransactionHistory";
 import { TransactionDetailsModal } from "../components/TransactionDetailsModal";
 import { AddBalanceModal } from "../components/AddBalanceModal";
-import { MOCK_TRANSACTIONS } from "../data/mockData";
+import { useWallet } from "../context/WalletContext";
 import type { Transaction, TabKey } from "../types";
 
 export function HomeScreen({ onNavigate, onOpenPay }: { onNavigate: (tab: TabKey) => void; onOpenPay: () => void }) {
+  const { transactions } = useWallet();
   const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
   const [addBalanceOpen, setAddBalanceOpen] = useState(false);
 
@@ -18,7 +19,7 @@ export function HomeScreen({ onNavigate, onOpenPay }: { onNavigate: (tab: TabKey
       <WalletBalance />
       <PrimaryActions onAddBalance={() => setAddBalanceOpen(true)} onPay={onOpenPay} />
       <TransactionHistory
-        transactions={MOCK_TRANSACTIONS}
+        transactions={transactions}
         limit={4}
         onSelect={setSelectedTxn}
         onViewAll={() => onNavigate("wallet")}

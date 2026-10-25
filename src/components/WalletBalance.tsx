@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
-import { MOCK_BALANCE_USDC, MOCK_FX_RATE_INR_PER_USDC } from "../data/mockData";
+import { MOCK_FX_RATE_INR_PER_USDC } from "../data/mockData";
+import { useWallet } from "../context/WalletContext";
 
 export function WalletBalance() {
+  const { balanceUsdc } = useWallet();
   const [hidden, setHidden] = useState(false);
-  const inrEquivalent = MOCK_BALANCE_USDC * MOCK_FX_RATE_INR_PER_USDC;
+  const inrEquivalent = balanceUsdc * MOCK_FX_RATE_INR_PER_USDC;
 
   return (
     <div className="px-5 pt-6 pb-2 text-center">
@@ -26,7 +28,7 @@ export function WalletBalance() {
           $
         </span>
         <span className="text-4xl font-extrabold tracking-tight text-neutral-900 tabular-nums">
-          {hidden ? "••••••" : MOCK_BALANCE_USDC.toFixed(2)}
+          {hidden ? "••••••" : balanceUsdc.toFixed(2)}
         </span>
         <span className="text-lg font-semibold text-neutral-400">USDC</span>
       </div>

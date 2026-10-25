@@ -10,49 +10,57 @@ export const CURRENCY_SYMBOL: Record<DepositCurrency, string> = {
   INR: "₹",
 };
 
-export interface DepositMethod {
+// Illustrative only, not a live exchange rate — same approach as the INR
+// balance equivalent shown on the wallet screen. Used to convert a deposit
+// in the funding currency into the USDC amount credited to the wallet.
+export const MOCK_USDC_RATE: Record<DepositCurrency, number> = {
+  USD: 1,
+  EUR: 1.08,
+  GBP: 1.27,
+  CAD: 0.73,
+  CHF: 1.12,
+  INR: 1 / 85,
+};
+
+export type FundingIcon = "bank" | "instant" | "wise" | "plaid";
+
+export interface FundingOption {
   id: string;
   label: string;
   timing: string;
+  icon: FundingIcon;
 }
 
-// Local payment rails available per currency — not every rail exists for
-// every currency/country, so the list narrows once a currency is picked.
-export const DEPOSIT_METHODS: Record<DepositCurrency, DepositMethod[]> = {
+// Each currency only shows the rails/providers that actually exist for it —
+// e.g. Interac is Canada-only, UPI is India-only, Plaid mainly covers US
+// bank linking.
+export const FUNDING_OPTIONS: Record<DepositCurrency, FundingOption[]> = {
   USD: [
-    { id: "ach", label: "ACH Transfer", timing: "1–3 business days · no fee" },
-    { id: "wire", label: "Wire Transfer", timing: "Same day · bank fees may apply" },
-  ],
-  EUR: [
-    { id: "sepa", label: "SEPA", timing: "1 business day · no fee" },
-    { id: "sepa_instant", label: "SEPA Instant", timing: "Within minutes · small fee" },
-  ],
-  GBP: [
-    { id: "faster_payments", label: "Faster Payments", timing: "Within minutes · no fee" },
-    { id: "wire", label: "Wire Transfer", timing: "Same day · bank fees may apply" },
+    { id: "ach", label: "ACH Transfer", timing: "1–3 business days · no fee", icon: "bank" },
+    { id: "wire", label: "Wire Transfer", timing: "Same day · bank fees may apply", icon: "bank" },
+    { id: "plaid", label: "Connect a bank via Plaid", timing: "Instant link · secure", icon: "plaid" },
   ],
   CAD: [
-    { id: "interac", label: "Interac e-Transfer", timing: "Within minutes · small fee" },
-    { id: "wire", label: "Wire Transfer", timing: "Same day · bank fees may apply" },
+    { id: "eft", label: "EFT", timing: "1–2 business days · no fee", icon: "bank" },
+    { id: "interac", label: "Interac e-Transfer", timing: "Within minutes · small fee", icon: "instant" },
+    { id: "wise", label: "Connect via Wise", timing: "Transfer from your Wise balance", icon: "wise" },
+  ],
+  EUR: [
+    { id: "sepa", label: "SEPA", timing: "1 business day · no fee", icon: "bank" },
+    { id: "sepa_instant", label: "SEPA Instant", timing: "Within minutes · small fee", icon: "instant" },
+    { id: "wise", label: "Connect via Wise", timing: "Transfer from your Wise balance", icon: "wise" },
+  ],
+  GBP: [
+    { id: "faster_payments", label: "Faster Payments", timing: "Within minutes · no fee", icon: "instant" },
+    { id: "wire", label: "Wire Transfer", timing: "Same day · bank fees may apply", icon: "bank" },
+    { id: "wise", label: "Connect via Wise", timing: "Transfer from your Wise balance", icon: "wise" },
   ],
   CHF: [
-    { id: "wire", label: "Wire Transfer (SWIFT)", timing: "1–2 business days · bank fees may apply" },
+    { id: "wire", label: "Wire Transfer (SWIFT)", timing: "1–2 business days · bank fees may apply", icon: "bank" },
+    { id: "wise", label: "Connect via Wise", timing: "Transfer from your Wise balance", icon: "wise" },
   ],
   INR: [
-    { id: "upi", label: "UPI", timing: "Instant · no fee" },
-    { id: "bank_transfer", label: "Bank Transfer (NEFT/RTGS)", timing: "Within hours · no fee" },
+    { id: "upi", label: "UPI", timing: "Instant · no fee", icon: "instant" },
+    { id: "bank_transfer", label: "Bank Transfer (NEFT/RTGS)", timing: "Within hours · no fee", icon: "bank" },
   ],
 };
-
-export interface FundingProvider {
-  id: "plaid" | "revolut" | "wise";
-  name: string;
-  label: string;
-  description: string;
-}
-
-export const FUNDING_PROVIDERS: FundingProvider[] = [
-  { id: "plaid", name: "Plaid", label: "Connect a bank via Plaid", description: "Securely link your bank account" },
-  { id: "revolut", name: "RevolutPay", label: "Pay with RevolutPay", description: "Fund instantly from your Revolut balance" },
-  { id: "wise", name: "Wise", label: "Connect via Wise", description: "Transfer from your Wise balance" },
-];

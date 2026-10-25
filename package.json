@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "deploy": "npm run build && aws s3 sync dist/ s3://sendrpay.sendr.cash --delete --exclude \"index.html\" --cache-control \"max-age=31536000,public,immutable\" && aws s3 cp dist/index.html s3://sendrpay.sendr.cash/index.html --cache-control \"no-cache,no-store,must-revalidate\" && aws cloudfront create-invalidation --distribution-id REPLACE_WITH_DISTRIBUTION_ID --paths \"/*\""
+    "deploy": "npm run build && aws s3 sync dist/ s3://sendrpay.sendr.cash --delete --exclude \"index.html\" --cache-control \"max-age=31536000,public,immutable\" && aws s3 cp dist/index.html s3://sendrpay.sendr.cash/index.html --cache-control \"no-cache,no-store,must-revalidate\" && aws cloudfront create-invalidation --distribution-id EVTH16R3Q6GSJ --paths \"/*\""
   },
   "dependencies": {
     "lucide-react": "^1.61.0",

@@ -4,11 +4,12 @@ import { WalletBalance } from "../components/WalletBalance";
 import { TransactionHistory } from "../components/TransactionHistory";
 import { TransactionDetailsModal } from "../components/TransactionDetailsModal";
 import { AddBalanceModal } from "../components/AddBalanceModal";
-import { MOCK_TRANSACTIONS } from "../data/mockData";
+import { useWallet } from "../context/WalletContext";
 import { Plus } from "lucide-react";
 import type { Transaction } from "../types";
 
 export function WalletScreen() {
+  const { transactions } = useWallet();
   const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
   const [addBalanceOpen, setAddBalanceOpen] = useState(false);
 
@@ -28,7 +29,7 @@ export function WalletScreen() {
         </button>
       </div>
 
-      <TransactionHistory transactions={MOCK_TRANSACTIONS} onSelect={setSelectedTxn} />
+      <TransactionHistory transactions={transactions} onSelect={setSelectedTxn} />
 
       <TransactionDetailsModal txn={selectedTxn} onClose={() => setSelectedTxn(null)} />
       <AddBalanceModal open={addBalanceOpen} onClose={() => setAddBalanceOpen(false)} />
