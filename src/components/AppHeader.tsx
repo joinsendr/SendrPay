@@ -4,7 +4,7 @@ export function AppHeader() {
   return (
     <header className="flex items-center justify-between px-5 pt-5 pb-2">
       <span className="text-lg font-extrabold tracking-tight text-neutral-900">
-        Sendr<span className="text-neutral-400">Pay</span>
+        Sendr <span className="text-neutral-400">pay</span>
       </span>
       <button
         type="button"

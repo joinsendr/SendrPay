@@ -8,7 +8,7 @@ export function SplashScreen({ visible }: { visible: boolean }) {
     >
       <div className="animate-fade-in text-center">
         <span className="text-4xl font-extrabold tracking-tight text-neutral-900">
-          Sendr<span className="text-neutral-400">Pay</span>
+          Sendr <span className="text-neutral-400">pay</span>
         </span>
       </div>
     </div>
