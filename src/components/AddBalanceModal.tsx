@@ -1,13 +1,15 @@
 import { useState } from "react";
-import { ChevronRight, Check, Loader2, Landmark, Zap, ArrowLeftRight, Shield } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
+import { ChevronRight, Check, Loader2, Landmark, Zap, ArrowLeftRight, Shield, Copy } from "lucide-react";
 import { Modal } from "./Modal";
 import { useWallet } from "../context/WalletContext";
 import {
   DEPOSIT_CURRENCIES, CURRENCY_SYMBOL, MOCK_USDC_RATE, FUNDING_OPTIONS,
   type DepositCurrency, type FundingOption, type FundingIcon,
 } from "../data/depositData";
+import { STELLAR_USDC_TESTNET_ADDRESS, STELLAR_NETWORK_LABEL } from "../data/stellarData";
 
-type Step = "currency" | "amount" | "funding" | "processing" | "success";
+type Step = "currency" | "amount" | "funding" | "processing" | "success" | "receiveUsdc";
 
 const STEP_TITLE: Record<Step, string> = {
   currency: "Add Balance",
@@ -15,7 +17,12 @@ const STEP_TITLE: Record<Step, string> = {
   funding: "Choose a funding method",
   processing: "Processing deposit",
   success: "Add Balance",
+  receiveUsdc: "Receive USDC",
 };
+
+function truncateAddress(addr: string): string {
+  return addr.length > 14 ? `${addr.slice(0, 6)}…${addr.slice(-6)}` : addr;
+}
 
 const OPTION_ICON: Record<FundingIcon, React.ElementType> = {
   bank: Landmark,
@@ -35,6 +42,7 @@ const initialState = {
 export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { addDeposit } = useWallet();
   const [state, setState] = useState(initialState);
+  const [addressCopied, setAddressCopied] = useState(false);
   const { step, currency, amount, option, creditedUsdc } = state;
 
   const reset = () => setState(initialState);
@@ -47,6 +55,17 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
   const goBack = () => {
     if (step === "amount") setState((s) => ({ ...s, step: "currency" }));
     else if (step === "funding") setState((s) => ({ ...s, step: "amount" }));
+    else if (step === "receiveUsdc") setState((s) => ({ ...s, step: "currency" }));
+  };
+
+  const copyAddress = async () => {
+    try {
+      await navigator.clipboard.writeText(STELLAR_USDC_TESTNET_ADDRESS);
+      setAddressCopied(true);
+      window.setTimeout(() => setAddressCopied(false), 1500);
+    } catch {
+      // clipboard unavailable — non-critical for a demo prototype
+    }
   };
 
   const selectCurrency = (c: DepositCurrency) => setState((s) => ({ ...s, currency: c, step: "amount" }));
@@ -67,28 +86,94 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
     <Modal
       open={open}
       onClose={close}
-      onBack={step === "amount" || step === "funding" ? goBack : undefined}
+      onBack={step === "amount" || step === "funding" || step === "receiveUsdc" ? goBack : undefined}
       title={STEP_TITLE[step]}
     >
       {step === "currency" && (
-        <div className="space-y-1.5">
-          <p className="mb-2 text-sm text-neutral-500">Which currency are you funding from?</p>
-          {DEPOSIT_CURRENCIES.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => selectCurrency(c)}
-              className="flex w-full items-center justify-between rounded-xl border border-neutral-200 px-4 py-3 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900"
-            >
-              <span className="flex items-center gap-2.5">
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-neutral-100 text-xs font-semibold text-neutral-600">
-                  {CURRENCY_SYMBOL[c]}
-                </span>
-                {c}
+        <div>
+          <p className="mb-2 text-sm text-neutral-500">Fund directly with USDC:</p>
+          <button
+            type="button"
+            onClick={() => setState((s) => ({ ...s, step: "receiveUsdc" }))}
+            className="mb-4 flex w-full items-center justify-between rounded-xl border border-neutral-900 px-4 py-3 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900"
+          >
+            <span className="flex items-center gap-2.5">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-neutral-900 text-[11px] font-bold text-white">
+                $
               </span>
-              <ChevronRight className="h-4 w-4 text-neutral-300" />
-            </button>
-          ))}
+              <span>
+                USDC
+                <span className="block text-xs font-normal text-neutral-400">Send directly via Stellar</span>
+              </span>
+            </span>
+            <ChevronRight className="h-4 w-4 text-neutral-300" />
+          </button>
+
+          <p className="mb-2 text-sm text-neutral-500">Or fund from a bank or card:</p>
+          <div className="space-y-1.5">
+            {DEPOSIT_CURRENCIES.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => selectCurrency(c)}
+                className="flex w-full items-center justify-between rounded-xl border border-neutral-200 px-4 py-3 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900"
+              >
+                <span className="flex items-center gap-2.5">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-neutral-100 text-xs font-semibold text-neutral-600">
+                    {CURRENCY_SYMBOL[c]}
+                  </span>
+                  {c}
+                </span>
+                <ChevronRight className="h-4 w-4 text-neutral-300" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {step === "receiveUsdc" && (
+        <div className="flex flex-col items-center py-2 text-center">
+          <span className="mb-4 rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-500">
+            {STELLAR_NETWORK_LABEL}
+          </span>
+
+          {STELLAR_USDC_TESTNET_ADDRESS ? (
+            <>
+              <div className="mb-4 rounded-2xl border border-neutral-200 p-3">
+                <QRCodeSVG value={STELLAR_USDC_TESTNET_ADDRESS} size={176} />
+              </div>
+              <p className="mb-1.5 text-xs text-neutral-400">Your Sendr Pay USDC address</p>
+              <button
+                type="button"
+                onClick={copyAddress}
+                className="flex items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 font-mono text-xs font-medium text-neutral-900 transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900"
+              >
+                {truncateAddress(STELLAR_USDC_TESTNET_ADDRESS)}
+                <Copy className="h-3.5 w-3.5" />
+              </button>
+              {addressCopied && <p className="mt-1.5 text-xs text-neutral-400">Copied</p>}
+
+              <p className="mt-4 max-w-[20rem] text-xs text-neutral-400">
+                Only send USDC on the Stellar network to this address. Sending any other asset or network may result in permanent loss.
+              </p>
+              <p className="mt-2 text-[11px] font-medium text-neutral-300">Testnet only — for testing, not real funds.</p>
+            </>
+          ) : (
+            <div className="py-6">
+              <p className="text-sm font-medium text-neutral-900">Testnet address not yet configured</p>
+              <p className="mt-1.5 max-w-[20rem] text-sm text-neutral-500">
+                A Stellar testnet USDC receiving address hasn't been added yet.
+              </p>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={close}
+            className="mt-5 h-11 w-full rounded-2xl bg-neutral-900 text-sm font-semibold text-white transition-transform active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2"
+          >
+            Done
+          </button>
         </div>
       )}
 
