@@ -1,0 +1,31 @@
+import { useState } from "react";
+import { AppHeader } from "../components/AppHeader";
+import { WalletBalance } from "../components/WalletBalance";
+import { PrimaryActions } from "../components/PrimaryActions";
+import { TransactionHistory } from "../components/TransactionHistory";
+import { TransactionDetailsModal } from "../components/TransactionDetailsModal";
+import { AddBalanceModal } from "../components/AddBalanceModal";
+import { MOCK_TRANSACTIONS } from "../data/mockData";
+import type { Transaction, TabKey } from "../types";
+
+export function HomeScreen({ onNavigate, onOpenPay }: { onNavigate: (tab: TabKey) => void; onOpenPay: () => void }) {
+  const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
+  const [addBalanceOpen, setAddBalanceOpen] = useState(false);
+
+  return (
+    <div className="animate-fade-up">
+      <AppHeader />
+      <WalletBalance />
+      <PrimaryActions onAddBalance={() => setAddBalanceOpen(true)} onPay={onOpenPay} />
+      <TransactionHistory
+        transactions={MOCK_TRANSACTIONS}
+        limit={4}
+        onSelect={setSelectedTxn}
+        onViewAll={() => onNavigate("wallet")}
+      />
+
+      <TransactionDetailsModal txn={selectedTxn} onClose={() => setSelectedTxn(null)} />
+      <AddBalanceModal open={addBalanceOpen} onClose={() => setAddBalanceOpen(false)} />
+    </div>
+  );
+}

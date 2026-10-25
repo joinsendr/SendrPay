@@ -1,0 +1,29 @@
+{
+  "name": "sendrpay",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "deploy": "npm run build && aws s3 sync dist/ s3://sendrpay.sendr.cash --delete --exclude \"index.html\" --cache-control \"max-age=31536000,public,immutable\" && aws s3 cp dist/index.html s3://sendrpay.sendr.cash/index.html --cache-control \"no-cache,no-store,must-revalidate\" && aws cloudfront create-invalidation --distribution-id REPLACE_WITH_DISTRIBUTION_ID --paths \"/*\""
+  },
+  "dependencies": {
+    "lucide-react": "^1.61.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "oxlint": "^1.88.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~6.0.3",
+    "vite": "^8.3.4"
+  }
+}
