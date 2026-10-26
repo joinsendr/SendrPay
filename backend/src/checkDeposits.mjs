@@ -1,5 +1,7 @@
 import { Horizon } from "@stellar/stellar-sdk";
-import { HORIZON_URL, DEPOSIT_ADDRESS, STELLAR_NETWORK, USDC_ISSUER } from "./config.mjs";
+import {
+  HORIZON_URL, DEPOSIT_ADDRESS, STELLAR_NETWORK, USDC_ISSUER, XLM_USDC_RATE, FIAT_CONVERSION_FEE_RATE,
+} from "./config.mjs";
 import { validateDepositOperation } from "./depositValidation.mjs";
 import { putEntryIfAbsent } from "./ledger.mjs";
 
@@ -39,14 +41,37 @@ export async function checkDeposits() {
     }
 
     const now = new Date().toISOString();
+
+    // USDC is credited 1:1, no conversion, no fee. A native XLM deposit is
+    // converted to its USDC-equivalent and carries the same conversion fee
+    // every other non-USDC funding path charges — only a direct USDC
+    // deposit is ever fee-free.
+    let amountUsdc, feeUsdc, feeRate;
+    if (check.assetCode === "USDC") {
+      amountUsdc = check.amount;
+      feeUsdc = 0;
+      feeRate = 0;
+    } else {
+      const grossUsdc = check.amount * XLM_USDC_RATE;
+      feeUsdc = grossUsdc * FIAT_CONVERSION_FEE_RATE;
+      amountUsdc = grossUsdc - feeUsdc;
+      feeRate = FIAT_CONVERSION_FEE_RATE;
+    }
+
     const entry = {
       entryId: `stellar:${op.transaction_hash}`,
       type: "stellar_deposit",
       status: "confirmed",
-      amountUsdc: check.amountUsdc,
+      amountUsdc,
+      feeUsdc,
+      feeRate,
+      assetCode: check.assetCode,
+      originalAmount: check.amount,
+      originalAsset: check.assetCode,
+      quotedRate: check.assetCode === "XLM" ? XLM_USDC_RATE : 1,
       txHash: op.transaction_hash,
       stellarNetwork: STELLAR_NETWORK,
-      assetIssuer: USDC_ISSUER,
+      assetIssuer: check.assetCode === "USDC" ? USDC_ISSUER : null,
       destination: DEPOSIT_ADDRESS,
       source: op.from,
       createdAt: op.created_at ?? now,

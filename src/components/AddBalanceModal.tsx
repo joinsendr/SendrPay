@@ -10,7 +10,10 @@ import {
   DEPOSIT_CURRENCIES, CURRENCY_SYMBOL, MOCK_USDC_RATE, FUNDING_OPTIONS, FIAT_CONVERSION_FEE_RATE,
   type DepositCurrency, type FundingOption, type FundingIcon,
 } from "../data/depositData";
-import { connectWallet, disconnectWallet, getWalletUsdcStatus, sendUsdcPayment, USDC_ISSUER, type WalletUsdcStatus } from "../lib/walletKit";
+import {
+  connectWallet, disconnectWallet, getWalletAssetStatus, sendAssetPayment, USDC_ISSUER,
+  type WalletAssetStatus, type DepositAssetCode,
+} from "../lib/walletKit";
 
 type Step = "currency" | "amount" | "funding" | "processing" | "success" | "receiveUsdc" | "connectWallet";
 
@@ -20,7 +23,7 @@ const STEP_TITLE: Record<Step, string> = {
   funding: "Fund with",
   processing: "Processing deposit",
   success: "Add Balance",
-  receiveUsdc: "USDC on Stellar",
+  receiveUsdc: "USDC or XLM on Stellar",
   connectWallet: "Pay from your wallet",
 };
 
@@ -67,7 +70,8 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
   // testnet wallet, instead of only being able to paste the address into an
   // external app.
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [walletStatus, setWalletStatus] = useState<WalletUsdcStatus | null>(null);
+  const [walletAsset, setWalletAsset] = useState<DepositAssetCode>("USDC");
+  const [walletStatus, setWalletStatus] = useState<WalletAssetStatus | null>(null);
   const [walletPhase, setWalletPhase] = useState<"idle" | "connecting" | "loadingBalance" | "sending" | "sent" | "error">("idle");
   const [walletError, setWalletError] = useState("");
   const [sendAmount, setSendAmount] = useState("");
@@ -80,6 +84,7 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
       reset();
       setJustDetected(null);
       setWalletAddress(null);
+      setWalletAsset("USDC");
       setWalletStatus(null);
       setWalletPhase("idle");
       setWalletError("");
@@ -102,12 +107,27 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
       const address = await connectWallet();
       setWalletAddress(address);
       setWalletPhase("loadingBalance");
-      const status = await getWalletUsdcStatus(address);
+      const status = await getWalletAssetStatus(address, walletAsset);
       setWalletStatus(status);
       setWalletPhase("idle");
     } catch (e) {
       setWalletPhase("error");
       setWalletError(e instanceof Error ? e.message : "Couldn't connect to a wallet");
+    }
+  };
+
+  const handleSwitchAsset = async (asset: DepositAssetCode) => {
+    setWalletAsset(asset);
+    setSendAmount("");
+    if (!walletAddress) return;
+    setWalletPhase("loadingBalance");
+    try {
+      const status = await getWalletAssetStatus(walletAddress, asset);
+      setWalletStatus(status);
+      setWalletPhase("idle");
+    } catch (e) {
+      setWalletPhase("error");
+      setWalletError(e instanceof Error ? e.message : "Couldn't load wallet balance");
     }
   };
 
@@ -131,7 +151,7 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
     setWalletPhase("sending");
     setWalletError("");
     try {
-      const hash = await sendUsdcPayment(walletAddress, depositInfo.address, sendAmount);
+      const hash = await sendAssetPayment(walletAddress, depositInfo.address, sendAmount, walletAsset);
       setSentTxHash(hash);
       setWalletPhase("sent");
       // Nudge the backend to pick this up immediately instead of waiting
@@ -230,8 +250,8 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
                 $
               </span>
               <span>
-                USDC on Stellar
-                <span className="block text-xs font-normal text-neutral-400">Real testnet deposit, verified on-chain</span>
+                USDC or XLM on Stellar
+                <span className="block text-xs font-normal text-neutral-400">Real testnet deposit, verified on-chain · USDC has no conversion fee</span>
               </span>
             </span>
             <ChevronRight className="h-4 w-4 text-neutral-300" />
@@ -283,7 +303,14 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
               <p className="mt-1 text-2xl font-extrabold tracking-tight text-neutral-900 tabular-nums">
                 +{justDetected.amountUsdc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-base font-semibold text-neutral-400">USDC</span>
               </p>
-              <p className="mt-1 text-xs text-neutral-400">Verified from actual Stellar testnet transaction data.</p>
+              {justDetected.assetCode === "XLM" ? (
+                <p className="mt-1 text-xs text-neutral-400">
+                  Converted from {justDetected.originalAmount?.toLocaleString(undefined, { maximumFractionDigits: 4 })} XLM
+                  {justDetected.feeUsdc ? ` · ${justDetected.feeUsdc.toLocaleString(undefined, { maximumFractionDigits: 4 })} USDC conversion fee (0.5%)` : ""}
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-neutral-400">Verified from actual Stellar testnet transaction data.</p>
+              )}
               {justDetected.txHash && (
                 <a
                   href={stellarExplorerUrl(justDetected.txHash)}
@@ -301,7 +328,7 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
               <div className="mb-4 rounded-2xl border border-neutral-200 p-3">
                 <QRCodeSVG value={depositInfo.address} size={176} />
               </div>
-              <p className="mb-1.5 text-xs text-neutral-400">Your Sendr Pay USDC address</p>
+              <p className="mb-1.5 text-xs text-neutral-400">Your Sendr Pay deposit address</p>
               <button
                 type="button"
                 onClick={copyAddress}
@@ -312,16 +339,26 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
               </button>
               {addressCopied && <p className="mt-1.5 text-xs text-neutral-400">Copied</p>}
 
-              <dl className="mt-4 w-full space-y-1.5 rounded-xl border border-neutral-100 bg-neutral-50 p-3 text-left text-xs">
-                <div className="flex items-center justify-between">
-                  <dt className="text-neutral-400">Asset</dt>
-                  <dd className="font-mono font-medium text-neutral-900">{depositInfo.asset.code}</dd>
-                </div>
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="shrink-0 text-neutral-400">Issuer</dt>
-                  <dd className="truncate font-mono font-medium text-neutral-900">{truncateAddress(depositInfo.asset.issuer)}</dd>
-                </div>
-              </dl>
+              <div className="mt-4 w-full space-y-2 text-left">
+                {depositInfo.assets.map((a) => (
+                  <dl key={a.code} className="space-y-1.5 rounded-xl border border-neutral-100 bg-neutral-50 p-3 text-xs">
+                    <div className="flex items-center justify-between">
+                      <dt className="text-neutral-400">Asset</dt>
+                      <dd className="font-mono font-medium text-neutral-900">{a.code}</dd>
+                    </div>
+                    {a.issuer && (
+                      <div className="flex items-center justify-between gap-3">
+                        <dt className="shrink-0 text-neutral-400">Issuer</dt>
+                        <dd className="truncate font-mono font-medium text-neutral-900">{truncateAddress(a.issuer)}</dd>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <dt className="text-neutral-400">Fee</dt>
+                      <dd className="font-medium text-neutral-900">{a.feeRate > 0 ? `${(a.feeRate * 100).toFixed(1)}% conversion fee` : "No fee"}</dd>
+                    </div>
+                  </dl>
+                ))}
+              </div>
 
               <div className="mt-4 flex items-center gap-1.5 text-xs font-medium text-neutral-500">
                 {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -329,7 +366,7 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
               </div>
 
               <p className="mt-3 max-w-[20rem] text-xs text-neutral-400">
-                Only send USDC issued by the address above, on Stellar Testnet, to this address. Any other asset or network may result in permanent loss.
+                Only send USDC issued by the issuer above, or native XLM, on Stellar Testnet, to this address. Any other asset or network may result in permanent loss.
               </p>
               <p className="mt-2 text-[11px] font-medium text-neutral-300">Testnet only — for testing, not real funds.</p>
 
@@ -369,7 +406,14 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
               <p className="mt-1 text-2xl font-extrabold tracking-tight text-neutral-900 tabular-nums">
                 +{justDetected.amountUsdc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-base font-semibold text-neutral-400">USDC</span>
               </p>
-              <p className="mt-1 text-xs text-neutral-400">Verified from actual Stellar testnet transaction data.</p>
+              {justDetected.assetCode === "XLM" ? (
+                <p className="mt-1 text-xs text-neutral-400">
+                  Converted from {justDetected.originalAmount?.toLocaleString(undefined, { maximumFractionDigits: 4 })} XLM
+                  {justDetected.feeUsdc ? ` · ${justDetected.feeUsdc.toLocaleString(undefined, { maximumFractionDigits: 4 })} USDC conversion fee (0.5%)` : ""}
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-neutral-400">Verified from actual Stellar testnet transaction data.</p>
+              )}
               {justDetected.txHash && (
                 <a
                   href={stellarExplorerUrl(justDetected.txHash)}
@@ -434,6 +478,22 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
                 {truncateAddress(walletAddress)}
               </button>
 
+              <div className="mb-3 flex w-full rounded-xl border border-neutral-200 p-1">
+                {(["USDC", "XLM"] as const).map((a) => (
+                  <button
+                    key={a}
+                    type="button"
+                    onClick={() => handleSwitchAsset(a)}
+                    disabled={walletPhase === "sending"}
+                    className={`flex-1 rounded-lg py-1.5 text-sm font-medium transition-colors ${
+                      walletAsset === a ? "bg-neutral-900 text-white" : "text-neutral-500 hover:bg-neutral-50"
+                    }`}
+                  >
+                    {a}
+                  </button>
+                ))}
+              </div>
+
               {walletPhase === "loadingBalance" ? (
                 <Loader2 className="mb-4 h-5 w-5 animate-spin text-neutral-400" />
               ) : walletStatus && !walletStatus.hasTrustline ? (
@@ -443,7 +503,8 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
                 </p>
               ) : walletStatus ? (
                 <p className="mb-4 text-xs text-neutral-400">
-                  Wallet balance: <span className="font-medium text-neutral-700">{walletStatus.balance.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC</span>
+                  Wallet balance: <span className="font-medium text-neutral-700">{walletStatus.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })} {walletAsset}</span>
+                  {walletAsset === "XLM" && <span className="text-neutral-300"> · 0.5% conversion fee applies</span>}
                 </p>
               ) : null}
 
@@ -459,7 +520,7 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
                   className="w-full bg-transparent text-xl font-semibold text-neutral-900 outline-none placeholder:text-neutral-300"
                   autoFocus
                 />
-                <span className="text-sm font-medium text-neutral-400">USDC</span>
+                <span className="text-sm font-medium text-neutral-400">{walletAsset}</span>
               </div>
 
               {walletPhase === "error" && (
@@ -476,7 +537,7 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
                 className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-neutral-900 text-sm font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2"
               >
                 {walletPhase === "sending" && <Loader2 className="h-4 w-4 animate-spin" />}
-                {walletPhase === "sending" ? "Sending…" : "Send USDC"}
+                {walletPhase === "sending" ? "Sending…" : `Send ${walletAsset}`}
               </button>
             </>
           )}

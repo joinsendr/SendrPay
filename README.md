@@ -1,10 +1,10 @@
 # Sendr Pay
 
-A cross-border payment wallet prototype built for HackMeridian 2026 — pay local merchants abroad using a USDC-denominated wallet, funded with **real Stellar testnet USDC deposits**, verified on-chain by a backend ledger.
+A cross-border payment wallet prototype built for HackMeridian 2026 — pay local merchants abroad using a USDC-denominated wallet, funded with **real Stellar testnet deposits (USDC or native XLM)**, verified on-chain by a backend ledger.
 
 Live at [sendrpay.sendr.cash](https://sendrpay.sendr.cash).
 
-> **This is a testnet demo, not a product.** USDC deposits are real Stellar *testnet* transactions with zero monetary value. Fiat funding and local payouts (UPI, Interac, SEPA, etc.) are simulated — no money moves and no licensed payment partner is connected. See [What's real vs. simulated](#whats-real-vs-simulated) below.
+> **This is a testnet demo, not a product.** USDC and XLM deposits are real Stellar *testnet* transactions with zero monetary value. Fiat funding and local payouts (UPI, Interac, SEPA, etc.) are simulated — no money moves and no licensed payment partner is connected. See [What's real vs. simulated](#whats-real-vs-simulated) below.
 
 ## Stack
 
@@ -23,7 +23,8 @@ Live at [sendrpay.sendr.cash](https://sendrpay.sendr.cash).
 
 | Flow | Status | Detail |
 |---|---|---|
-| **USDC deposit (Stellar)** | **Real, on-chain** | You send actual testnet USDC to the wallet's Stellar address. The backend polls Horizon, verifies transaction success, asset code **and issuer**, and credits the ledger — never trusting client input. Idempotent: the same transaction hash can never be credited twice. |
+| **USDC deposit (Stellar)** | **Real, on-chain** | You send actual testnet USDC to the wallet's Stellar address. The backend polls Horizon, verifies transaction success, asset code **and issuer**, and credits the ledger 1:1, no fee — never trusting client input. Idempotent: the same transaction hash can never be credited twice. |
+| **Native XLM deposit (Stellar)** | **Real, on-chain** | Same address, same verification — a native XLM payment is accepted too, converted to its USDC-equivalent at an illustrative rate (XLM has no real testnet market rate) with the same 0.5% conversion fee every non-direct-USDC funding path carries. |
 | **Fiat funding** (bank transfer, card, etc.) | Simulated | Instantly credits the ledger with no real money movement. |
 | **UPI QR payment** (Pay → scan a UPI QR code) | **Real orchestration, simulated payout leg** | Real camera/upload QR scanning and UPI URI parsing, a real backend payment-lifecycle state machine, and a real ledger deduction — but the actual India-side payout is handled by a simulated adapter (`backend/src/indiaPayoutAdapter.mjs`), since no licensed UPI payout provider is connected. No real INR moves and no real UPI payment is executed. |
 | **Other local payment methods** (Interac, SEPA, Zelle, etc. in the generic Pay flow) | Simulated | Illustrative fee/conversion-rate breakdown. Debits the ledger balance (server-side, with an insufficient-balance check) but does not move real funds. |
@@ -36,7 +37,8 @@ The UI does not visually distinguish real vs. simulated transactions (by request
 | Flow | Fee | Why |
 |---|---|---|
 | USDC deposit on Stellar (direct) | **None** | No conversion needed — it's already USDC. |
-| Fiat funding (card/bank rail) | **0.5%** flat, deducted from the converted USDC before crediting | Deliberate incentive to fund with USDC directly instead of through a fiat rail — see `FIAT_CONVERSION_FEE_RATE` in `backend/src/config.mjs`. Shown as a full Converted/Fee/You'll-receive breakdown before the user commits. |
+| Native XLM deposit on Stellar | **0.5%** flat, deducted from the converted USDC before crediting | Still a real on-chain deposit, but XLM needs converting into USDC — same conversion fee as fiat. See `XLM_USDC_RATE` / `FIAT_CONVERSION_FEE_RATE` in `backend/src/config.mjs`. |
+| Fiat funding (card/bank rail) | **0.5%** flat, deducted from the converted USDC before crediting | Deliberate incentive to fund with USDC directly instead of through a fiat rail or XLM — see `FIAT_CONVERSION_FEE_RATE` in `backend/src/config.mjs`. Shown as a full Converted/Fee/You'll-receive breakdown before the user commits. |
 | UPI payment (Pay → scan or enter a UPI ID) | **1%** flat on the USDC side | See `UPI_FEE_RATE` in `backend/src/config.mjs`. Shown on the review screen before confirming. |
 | Other local payment methods (Interac, SEPA, etc.) | None currently modeled | Not part of this pricing pass. |
 
@@ -44,7 +46,7 @@ Both rates are illustrative/configurable constants for this hackathon prototype,
 
 ### Funding from your own wallet
 
-Inside **Add Balance → USDC on Stellar**, beyond scanning the QR code, there's a **"Connect your wallet to pay directly"** option backed by [Stellar Wallets Kit](https://stellarwalletskit.dev) (`src/lib/walletKit.ts`). It supports Freighter, xBull, Albedo, Rabet, Lobstr, and other Stellar wallets — the connected wallet signs a real USDC payment to the deposit address, which the app submits to Horizon and your backend verifies exactly like any other deposit. The app only ever asks the wallet to sign a transaction it never receives or stores the user's secret key.
+Inside **Add Balance → USDC or XLM on Stellar**, beyond scanning the QR code, there's a **"Connect your wallet to pay directly"** option backed by [Stellar Wallets Kit](https://stellarwalletskit.dev) (`src/lib/walletKit.ts`). It supports Freighter, xBull, Albedo, Rabet, Lobstr, and other Stellar wallets — pick USDC or XLM with the in-flow toggle, and the connected wallet signs a real payment of that asset to the deposit address, which the app submits to Horizon and your backend verifies exactly like any other deposit. The app only ever asks the wallet to sign a transaction; it never receives or stores the user's secret key.
 
 ## Architecture
 
@@ -73,7 +75,7 @@ Inside **Add Balance → USDC on Stellar**, beyond scanning the QR code, there's
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/wallet` | Server-computed balance + full transaction/ledger history |
-| `GET` | `/wallet/address` | The wallet's Stellar deposit address + expected asset/issuer |
+| `GET` | `/wallet/address` | The wallet's Stellar deposit address + the accepted assets (USDC with its issuer, and native XLM) with each one's fee |
 | `POST` | `/deposits/check` | Forces an immediate poll of Horizon for new deposits (also run automatically every minute by EventBridge) |
 | `POST` | `/funding/simulate` | Creates a simulated fiat funding ledger entry |
 | `POST` | `/payments/simulate` | Legacy simulated payment entry used by the generic (non-UPI) Pay flow (rejects with `400 insufficient_balance` if the balance is too low) |
@@ -88,11 +90,12 @@ Inside **Add Balance → USDC on Stellar**, beyond scanning the QR code, there's
 A payment operation from Horizon is only credited if **all** of the following hold:
 1. It is a `payment` operation to the wallet's deposit address.
 2. The source transaction succeeded (`transaction_successful === true`).
-3. The asset is non-native (not raw XLM).
-4. The asset code matches `USDC` **and** the asset issuer matches Circle's official testnet USDC issuer (`GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`) — matching on asset code alone would accept any lookalike token.
-5. The amount is a positive, finite number.
+3. The amount is a positive, finite number.
+4. The asset is **either**:
+   - native XLM, **or**
+   - an asset whose code matches `USDC` **and** whose issuer matches Circle's official testnet USDC issuer (`GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`) — matching on asset code alone would accept any lookalike token. Any other asset (wrong code, wrong issuer, or some unrelated token) is rejected outright.
 
-Each accepted deposit is written to DynamoDB with the transaction hash as (part of) its primary key and a conditional `attribute_not_exists` write, so re-polling the same transaction can never double-credit it.
+USDC credits 1:1 with no fee; a native XLM deposit is converted to its USDC-equivalent (`XLM_USDC_RATE`, illustrative) with the same 0.5% conversion fee every non-direct-USDC path carries (`checkDeposits.mjs`). Each accepted deposit is written to DynamoDB with the transaction hash as (part of) its primary key and a conditional `attribute_not_exists` write, so re-polling the same transaction can never double-credit it.
 
 ### UPI payment orchestrator (`backend/src/payments.mjs`)
 
@@ -148,13 +151,15 @@ No Stellar *secret* key is used by the backend — deposit verification is read-
 ## Setting up your own Stellar testnet wallet
 
 1. Generate a keypair (e.g. with `@stellar/stellar-sdk`'s `Keypair.random()`).
-2. Fund it on testnet via [Friendbot](https://friendbot.stellar.org) (`GET https://friendbot.stellar.org?addr=<PUBLIC_KEY>`) — this creates the account and gives it testnet XLM for fees.
-3. Establish a trustline to Circle's testnet USDC asset (code `USDC`, issuer `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`) via a `ChangeTrust` operation — an account cannot hold a non-native asset without one.
-4. Set `STELLAR_DEPOSIT_ADDRESS` (backend) to the new public key.
+2. Fund it on testnet via [Friendbot](https://friendbot.stellar.org) (`GET https://friendbot.stellar.org?addr=<PUBLIC_KEY>`) — this creates the account and gives it testnet XLM for fees **and is itself already enough to test the native XLM deposit path**, no trustline needed.
+3. Set `STELLAR_DEPOSIT_ADDRESS` (backend) to the new public key.
+4. *(Only if you also want to test USDC deposits)* Establish a trustline to Circle's testnet USDC asset (code `USDC`, issuer `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`) via a `ChangeTrust` operation — an account cannot hold a non-native asset without one.
 
-### Getting testnet USDC to deposit
+### Getting testnet funds to deposit
 
-Circle does not run a public testnet USDC faucet for Stellar; testnet USDC is typically obtained by swapping testnet XLM for it on a testnet DEX, or from another testnet account that already holds some. See [Circle's Stellar testnet docs](https://developers.circle.com/stablecoins/quickstart-transfer-usdc-stellar) for current guidance.
+**XLM** — none needed beyond what Friendbot already gave the account in step 2; just send some of it to the deposit address.
+
+**USDC** — Circle does not run a public testnet USDC faucet for Stellar; testnet USDC is typically obtained by swapping testnet XLM for it on a testnet DEX, or from another testnet account that already holds some. See [Circle's Stellar testnet docs](https://developers.circle.com/stablecoins/quickstart-transfer-usdc-stellar) for current guidance.
 
 ## Deploying the backend
 
@@ -179,8 +184,8 @@ Hosted on AWS S3 (`sendrpay.sendr.cash` bucket) + CloudFront, same pattern as [s
 ## Judge demo flow
 
 1. Open [sendrpay.sendr.cash](https://sendrpay.sendr.cash).
-2. Tap **Add Balance → USDC on Stellar**. A real Stellar testnet deposit address and QR code are shown, along with the exact asset code and issuer the backend will verify against.
-3. From a Stellar testnet wallet (e.g. a browser extension wallet or the Stellar Laboratory) holding testnet USDC, send a small amount to the displayed address.
+2. Tap **Add Balance → USDC or XLM on Stellar**. A real Stellar testnet deposit address and QR code are shown, along with both accepted assets and their fees.
+3. From a Stellar testnet wallet (e.g. a browser extension wallet or the Stellar Laboratory), send a small amount to the displayed address — **native XLM is the fastest to demo**, since a Friendbot-funded account already holds some with no trustline setup needed; USDC works too if you've already got a trustline + testnet USDC.
 4. Watch the modal — it polls automatically every few seconds and, once the backend's deposit check picks up the transaction, flips to a **"Deposit confirmed"** view showing the credited amount and a link to the transaction on [Stellar Expert](https://stellar.expert/explorer/testnet).
 5. Return to Home — the wallet balance has updated, computed entirely server-side from the ledger (not from anything the browser sent).
 6. Tap **Add Balance → a fiat option** (e.g. a card or bank rail) to see the fiat funding flow credit the balance instantly.

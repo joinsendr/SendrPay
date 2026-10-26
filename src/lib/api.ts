@@ -13,9 +13,12 @@ export interface LedgerEntry {
   amountUsdc: number;
   feeUsdc?: number;
   feeRate?: number;
+  assetCode?: string;
+  originalAsset?: string;
+  quotedRate?: number;
   txHash: string | null;
   stellarNetwork?: string;
-  assetIssuer?: string;
+  assetIssuer?: string | null;
   destination?: string;
   source?: string;
   originalAmount?: number;
@@ -31,11 +34,18 @@ export interface WalletSnapshot {
   transactions: LedgerEntry[];
 }
 
+export interface DepositAsset {
+  code: string;
+  issuer: string | null;
+  feeRate: number;
+  illustrativeRate?: number;
+}
+
 export interface DepositAddressInfo {
   address: string;
   network: string;
   horizonUrl: string;
-  asset: { code: string; issuer: string };
+  assets: DepositAsset[];
 }
 
 export interface CheckDepositsResult extends WalletSnapshot {

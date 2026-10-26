@@ -24,12 +24,19 @@ export const PAYMENTS_TABLE = process.env.PAYMENTS_TABLE || "sendrpay_payments";
 // Flat 1% fee on the USDC side of a UPI payment.
 export const UPI_FEE_RATE = 0.01;
 
-// Flat 0.5% fee applied when funding the wallet via a simulated fiat rail
-// (card/bank/etc). Funding directly with USDC on Stellar has no such fee —
-// this is the deliberate incentive to deposit on-chain instead of through a
-// fiat rail, and must stay reflected on both the funding preview and the
-// credited ledger entry so the two paths are never silently equivalent.
+// Flat 0.5% fee applied whenever funding requires a conversion into USDC —
+// a simulated fiat rail (card/bank/etc), or a native XLM deposit on Stellar.
+// Funding directly with USDC on Stellar needs no conversion and has no such
+// fee — this is the deliberate incentive to deposit USDC on-chain directly,
+// and must stay reflected on both the funding preview and the credited
+// ledger entry so no conversion path is ever silently fee-free except that
+// one.
 export const FIAT_CONVERSION_FEE_RATE = 0.005;
+
+// Illustrative only, not a live market rate — testnet XLM has no monetary
+// value, so there is no "real" rate to use here regardless. Used only to
+// convert a native XLM deposit into a USDC credit amount.
+export const XLM_USDC_RATE = 0.11;
 
 // Illustrative only, not a live FX feed — mirrors the rate used by the
 // existing frontend mock funding/payment flows, kept here so the backend's

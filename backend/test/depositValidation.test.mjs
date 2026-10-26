@@ -25,7 +25,17 @@ function baseOp(overrides = {}) {
 test("accepts a valid USDC payment to our address", () => {
   const result = validateDepositOperation(baseOp());
   assert.equal(result.valid, true);
-  assert.equal(result.amountUsdc, 25.5);
+  assert.equal(result.assetCode, "USDC");
+  assert.equal(result.amount, 25.5);
+});
+
+test("accepts a valid native XLM payment to our address", () => {
+  const result = validateDepositOperation(
+    baseOp({ asset_type: "native", asset_code: undefined, asset_issuer: undefined, amount: "100.0000000" })
+  );
+  assert.equal(result.valid, true);
+  assert.equal(result.assetCode, "XLM");
+  assert.equal(result.amount, 100);
 });
 
 test("rejects a payment to a different destination", () => {
@@ -40,10 +50,10 @@ test("rejects a failed transaction", () => {
   assert.equal(result.reason, "transaction_not_successful");
 });
 
-test("rejects native XLM (not an asset payment at all)", () => {
-  const result = validateDepositOperation(baseOp({ asset_type: "native", asset_code: undefined, asset_issuer: undefined }));
+test("rejects a non-USDC, non-native asset — e.g. some other token entirely", () => {
+  const result = validateDepositOperation(baseOp({ asset_code: "SHIB", asset_issuer: "GRANDOMISSUERXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX" }));
   assert.equal(result.valid, false);
-  assert.equal(result.reason, "wrong_asset_native_xlm");
+  assert.equal(result.reason, "wrong_asset_code");
 });
 
 test("rejects an asset that isn't code USDC", () => {

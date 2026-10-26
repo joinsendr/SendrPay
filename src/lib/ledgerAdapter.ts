@@ -20,7 +20,7 @@ export function ledgerEntryToTransaction(entry: LedgerEntry): Transaction {
   if (entry.type === "stellar_deposit") {
     return {
       id: entry.entryId,
-      merchant: "USDC Deposit (Stellar)",
+      merchant: entry.assetCode === "XLM" ? "XLM Deposit (Stellar)" : "USDC Deposit (Stellar)",
       category: "topup",
       amountUsdc: Math.abs(entry.amountUsdc),
       kind,

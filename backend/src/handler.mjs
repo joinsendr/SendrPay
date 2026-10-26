@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
-  STELLAR_NETWORK, HORIZON_URL, DEPOSIT_ADDRESS, USDC_ASSET_CODE, USDC_ISSUER, MOCK_USDC_RATE, FIAT_CONVERSION_FEE_RATE,
+  STELLAR_NETWORK, HORIZON_URL, DEPOSIT_ADDRESS, USDC_ASSET_CODE, USDC_ISSUER, MOCK_USDC_RATE, FIAT_CONVERSION_FEE_RATE, XLM_USDC_RATE,
 } from "./config.mjs";
 import { listEntries, putEntryIfAbsent } from "./ledger.mjs";
 import { computeBalance } from "./depositValidation.mjs";
@@ -78,7 +78,13 @@ export async function handler(event) {
         address: DEPOSIT_ADDRESS,
         network: STELLAR_NETWORK,
         horizonUrl: HORIZON_URL,
-        asset: { code: USDC_ASSET_CODE, issuer: USDC_ISSUER },
+        // Both assets are accepted to this same address. USDC credits 1:1
+        // with no fee; XLM is converted at an illustrative rate with the
+        // same conversion fee every non-direct-USDC funding path charges.
+        assets: [
+          { code: USDC_ASSET_CODE, issuer: USDC_ISSUER, feeRate: 0 },
+          { code: "XLM", issuer: null, feeRate: FIAT_CONVERSION_FEE_RATE, illustrativeRate: XLM_USDC_RATE },
+        ],
       });
     }
 

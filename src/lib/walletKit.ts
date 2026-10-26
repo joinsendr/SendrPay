@@ -50,16 +50,22 @@ export async function getConnectedAddress(): Promise<string | null> {
   }
 }
 
-export interface WalletUsdcStatus {
+export type DepositAssetCode = "USDC" | "XLM";
+
+export interface WalletAssetStatus {
   hasTrustline: boolean;
   balance: number;
 }
 
 // Read-only lookup — safe to call before any signing, used to show the
-// connected wallet's current USDC balance and warn if it has no trustline
-// (and therefore can't hold/send USDC) before the user tries to pay.
-export async function getWalletUsdcStatus(address: string): Promise<WalletUsdcStatus> {
+// connected wallet's current balance of the chosen asset and warn if it has
+// no USDC trustline (native XLM never needs one — every account has it).
+export async function getWalletAssetStatus(address: string, assetCode: DepositAssetCode): Promise<WalletAssetStatus> {
   const account = await server.loadAccount(address);
+  if (assetCode === "XLM") {
+    const native = account.balances.find((b) => b.asset_type === "native");
+    return { hasTrustline: true, balance: native ? parseFloat(native.balance) : 0 };
+  }
   const line = account.balances.find(
     (b) => "asset_code" in b && b.asset_code === USDC_ASSET_CODE && b.asset_issuer === USDC_ISSUER
   );
@@ -67,15 +73,17 @@ export async function getWalletUsdcStatus(address: string): Promise<WalletUsdcSt
   return { hasTrustline: true, balance: parseFloat(line.balance) };
 }
 
-// Builds a USDC payment from the connected wallet to our deposit address,
-// asks the wallet extension to sign it, then submits the signed envelope to
-// Horizon ourselves. Returns the transaction hash on success.
-export async function sendUsdcPayment(
+// Builds a USDC or native-XLM payment from the connected wallet to our
+// deposit address, asks the wallet extension to sign it, then submits the
+// signed envelope to Horizon ourselves. Returns the transaction hash.
+export async function sendAssetPayment(
   sourceAddress: string,
   destinationAddress: string,
-  amount: string
+  amount: string,
+  assetCode: DepositAssetCode
 ): Promise<string> {
   const account = await server.loadAccount(sourceAddress);
+  const asset = assetCode === "XLM" ? Asset.native() : usdcAsset;
   const tx = new TransactionBuilder(account, {
     fee: BASE_FEE,
     networkPassphrase: Networks.TESTNET,
@@ -83,7 +91,7 @@ export async function sendUsdcPayment(
     .addOperation(
       Operation.payment({
         destination: destinationAddress,
-        asset: usdcAsset,
+        asset,
         amount,
       })
     )
