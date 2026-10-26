@@ -4,6 +4,7 @@ import { ScreenHeader } from "../components/ScreenHeader";
 import { useWallet } from "../context/WalletContext";
 import { CURRENCY_SYMBOL, MOCK_USDC_RATE } from "../data/depositData";
 import { PAY_CURRENCIES, PAY_COUNTRY_BY_CURRENCY, EU_COUNTRIES, type PayCurrency, type PayMethod } from "../data/payData";
+import { UpiPayFlow } from "../components/UpiPayFlow";
 
 type Step = "currency" | "euCountry" | "method" | "pay" | "processing" | "success";
 
@@ -155,7 +156,9 @@ export function PayScreen() {
         </div>
       )}
 
-      {s.step === "pay" && s.currency && s.method && (
+      {s.step === "pay" && s.currency && s.method && s.method.id === "upi" ? (
+        <UpiPayFlow onDone={reset} />
+      ) : s.step === "pay" && s.currency && s.method && (
         <div className="flex flex-1 flex-col items-center px-6 py-4 text-center">
           {s.method.inputMode === "qr" ? (
             <>

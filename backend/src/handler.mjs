@@ -5,6 +5,7 @@ import {
 import { listEntries, putEntryIfAbsent } from "./ledger.mjs";
 import { computeBalance } from "./depositValidation.mjs";
 import { checkDeposits } from "./checkDeposits.mjs";
+import { createPayment, confirmPayment, cancelPayment, reversePayment, getPayment } from "./payments.mjs";
 
 function json(statusCode, body) {
   return {
@@ -31,8 +32,47 @@ export async function handler(event) {
 
   const method = event.requestContext?.http?.method;
   const path = event.rawPath || "/";
+  const segments = path.split("/").filter(Boolean);
 
   try {
+    // /payments, /payments/{id}, /payments/{id}/confirm|cancel|reverse
+    if (segments[0] === "payments") {
+      const paymentId = segments[1];
+
+      if (method === "POST" && segments.length === 1) {
+        const body = JSON.parse(event.body || "{}");
+        if (!body.paymentId) {
+          return json(400, { error: "paymentId (idempotency key) is required" });
+        }
+        const payment = await createPayment(body);
+        return json(payment.status === "failed" ? 400 : 201, { payment });
+      }
+
+      if (method === "GET" && segments.length === 2) {
+        const payment = await getPayment(paymentId);
+        if (!payment) return json(404, { error: "payment_not_found" });
+        return json(200, { payment });
+      }
+
+      if (method === "POST" && segments.length === 3 && segments[2] === "confirm") {
+        const payment = await confirmPayment(paymentId);
+        if (!payment) return json(404, { error: "payment_not_found" });
+        return json(200, { payment, ...(await walletSnapshot()) });
+      }
+
+      if (method === "POST" && segments.length === 3 && segments[2] === "cancel") {
+        const payment = await cancelPayment(paymentId);
+        if (!payment) return json(404, { error: "payment_not_found" });
+        return json(200, { payment });
+      }
+
+      if (method === "POST" && segments.length === 3 && segments[2] === "reverse") {
+        const payment = await reversePayment(paymentId);
+        if (!payment) return json(404, { error: "payment_not_found" });
+        return json(200, { payment, ...(await walletSnapshot()) });
+      }
+    }
+
     if (method === "GET" && path === "/wallet/address") {
       return json(200, {
         address: DEPOSIT_ADDRESS,
