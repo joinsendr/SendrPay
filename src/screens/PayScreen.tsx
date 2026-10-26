@@ -31,7 +31,7 @@ const initialState = {
 };
 
 export function PayScreen() {
-  const { addPayment } = useWallet();
+  const { paySimulated } = useWallet();
   const [s, setS] = useState(initialState);
 
   const reset = () => setS(initialState);
@@ -64,21 +64,23 @@ export function PayScreen() {
     window.setTimeout(() => setS((p) => ({ ...p, scanning: false, qrScanned: true })), 1300);
   };
 
-  const submitPayment = () => {
+  const submitPayment = async () => {
     if (!s.currency || !s.method) return;
     const amt = parseFloat(s.amount);
     if (!(amt > 0)) return;
-    const usdc = amt * MOCK_USDC_RATE[s.currency];
 
     setS((p) => ({ ...p, step: "processing", error: "" }));
-    window.setTimeout(() => {
-      const txn = addPayment(usdc, s.method!.label);
-      if (!txn) {
+    await new Promise((r) => window.setTimeout(r, 1400)); // visual "processing" beat
+    try {
+      const entry = await paySimulated(amt, s.currency, s.method.label, s.country ?? undefined);
+      if (!entry) {
         setS((p) => ({ ...p, step: "pay", error: "Insufficient balance for this payment." }));
         return;
       }
-      setS((p) => ({ ...p, step: "success", creditedUsdc: usdc }));
-    }, 1400);
+      setS((p) => ({ ...p, step: "success", creditedUsdc: Math.abs(entry.amountUsdc) }));
+    } catch {
+      setS((p) => ({ ...p, step: "pay", error: "Something went wrong — please try again." }));
+    }
   };
 
   const showBack = s.step === "euCountry" || s.step === "method" || s.step === "pay";
@@ -237,6 +239,10 @@ export function PayScreen() {
                 />
                 <span className="text-sm font-medium text-neutral-400">{s.currency}</span>
               </div>
+              <p className="mt-1.5 text-xs text-neutral-400">
+                {parseFloat(s.amount) > 0 &&
+                  `≈ ${(parseFloat(s.amount) * MOCK_USDC_RATE[s.currency]).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC · no fee (demo) · illustrative rate`}
+              </p>
 
               {s.error && (
                 <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-neutral-500">
@@ -261,7 +267,7 @@ export function PayScreen() {
         <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
           <Loader2 className="mb-4 h-10 w-10 animate-spin text-neutral-900" />
           <p className="text-sm font-medium text-neutral-900">Processing payment via {s.method.label}…</p>
-          <p className="mt-1 text-xs text-neutral-400">This is a demo — no real money is moved.</p>
+          <p className="mt-1 text-xs text-neutral-400">Simulated — {s.currency} local payout isn't connected to a real provider yet.</p>
         </div>
       )}
 
@@ -276,6 +282,9 @@ export function PayScreen() {
           </p>
           <p className="mt-1 text-xs text-neutral-400">
             {s.creditedUsdc.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC · via {s.method.label} · {s.country}
+          </p>
+          <p className="mt-3 max-w-xs text-[11px] text-neutral-300">
+            Simulated — {s.country} {s.method.label} payout. Not a real transfer; no licensed payment partner is connected yet.
           </p>
 
           <button

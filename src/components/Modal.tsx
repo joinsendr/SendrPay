@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { X, ChevronLeft } from "lucide-react";
 
 export function Modal({
@@ -25,7 +26,14 @@ export function Modal({
 
   if (!open) return null;
 
-  return (
+  // Rendered via a portal straight to <body> — not just a stylistic choice.
+  // Any ancestor with a non-"none" transform (e.g. our own screen-entrance
+  // `.animate-fade-up`, whose *finished* state is `transform: translateY(0)`,
+  // not `none`) becomes a CSS containing block for `position: fixed`
+  // descendants. Without the portal, this modal would be positioned relative
+  // to that small animated wrapper instead of the real viewport, pushing
+  // tall content off-screen above y=0 with no way to scroll back up to it.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-label={title}>
       <button
         type="button"
@@ -33,8 +41,8 @@ export function Modal({
         onClick={onClose}
         className="absolute inset-0 bg-neutral-900/40 animate-fade-in"
       />
-      <div className="relative z-10 w-full max-w-sm animate-fade-up rounded-t-3xl border border-neutral-200 bg-white p-5 shadow-xl sm:rounded-3xl">
-        <div className="mb-4 flex items-center justify-between">
+      <div className="relative z-10 flex max-h-[85vh] w-full max-w-sm animate-fade-up flex-col rounded-t-3xl border border-neutral-200 bg-white shadow-xl sm:rounded-3xl">
+        <div className="flex shrink-0 items-center justify-between p-5 pb-4">
           <div className="flex items-center gap-1.5">
             {onBack && (
               <button
@@ -57,8 +65,9 @@ export function Modal({
             <X className="h-4 w-4" />
           </button>
         </div>
-        {children}
+        <div className="overflow-y-auto px-5 pb-5">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

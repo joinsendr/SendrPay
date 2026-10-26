@@ -6,6 +6,7 @@ import { TransactionHistory } from "../components/TransactionHistory";
 import { TransactionDetailsModal } from "../components/TransactionDetailsModal";
 import { AddBalanceModal } from "../components/AddBalanceModal";
 import { useWallet } from "../context/WalletContext";
+import { ledgerEntryToTransaction } from "../lib/ledgerAdapter";
 import type { Transaction, TabKey } from "../types";
 
 export function HomeScreen({ onNavigate, onOpenPay }: { onNavigate: (tab: TabKey) => void; onOpenPay: () => void }) {
@@ -19,7 +20,7 @@ export function HomeScreen({ onNavigate, onOpenPay }: { onNavigate: (tab: TabKey
       <WalletBalance />
       <PrimaryActions onAddBalance={() => setAddBalanceOpen(true)} onPay={onOpenPay} />
       <TransactionHistory
-        transactions={transactions}
+        transactions={transactions.map(ledgerEntryToTransaction)}
         limit={4}
         onSelect={setSelectedTxn}
         onViewAll={() => onNavigate("wallet")}

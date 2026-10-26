@@ -1,0 +1,114 @@
+import { randomUUID } from "node:crypto";
+import {
+  STELLAR_NETWORK, HORIZON_URL, DEPOSIT_ADDRESS, USDC_ASSET_CODE, USDC_ISSUER, MOCK_USDC_RATE,
+} from "./config.mjs";
+import { listEntries, putEntryIfAbsent } from "./ledger.mjs";
+import { computeBalance } from "./depositValidation.mjs";
+import { checkDeposits } from "./checkDeposits.mjs";
+
+function json(statusCode, body) {
+  return {
+    statusCode,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  };
+}
+
+async function walletSnapshot() {
+  const entries = await listEntries();
+  return { balanceUsdc: computeBalance(entries), transactions: entries };
+}
+
+export async function handler(event) {
+  // Scheduled invocation (EventBridge) — not an HTTP request, just run the
+  // deposit poll so new deposits are detected even with no one looking at
+  // the app.
+  if (event.source === "aws.events") {
+    const result = await checkDeposits();
+    console.log("[scheduled check-deposits]", JSON.stringify(result));
+    return result;
+  }
+
+  const method = event.requestContext?.http?.method;
+  const path = event.rawPath || "/";
+
+  try {
+    if (method === "GET" && path === "/wallet/address") {
+      return json(200, {
+        address: DEPOSIT_ADDRESS,
+        network: STELLAR_NETWORK,
+        horizonUrl: HORIZON_URL,
+        asset: { code: USDC_ASSET_CODE, issuer: USDC_ISSUER },
+      });
+    }
+
+    if (method === "GET" && path === "/wallet") {
+      return json(200, await walletSnapshot());
+    }
+
+    if (method === "POST" && path === "/deposits/check") {
+      const result = await checkDeposits();
+      return json(200, { ...result, ...(await walletSnapshot()) });
+    }
+
+    if (method === "POST" && path === "/funding/simulate") {
+      const body = JSON.parse(event.body || "{}");
+      const amount = parseFloat(body.amount);
+      const currency = body.currency;
+      if (!(amount > 0) || !MOCK_USDC_RATE[currency]) {
+        return json(400, { error: "amount must be > 0 and currency must be one of " + Object.keys(MOCK_USDC_RATE).join(", ") });
+      }
+      const amountUsdc = amount * MOCK_USDC_RATE[currency];
+      const entry = {
+        entryId: `sim:${randomUUID()}`,
+        type: "simulated_fiat",
+        status: "confirmed",
+        amountUsdc,
+        txHash: null,
+        originalAmount: amount,
+        originalCurrency: currency,
+        method: body.method || null,
+        createdAt: new Date().toISOString(),
+        confirmedAt: new Date().toISOString(),
+      };
+      await putEntryIfAbsent(entry);
+      return json(201, { entry, ...(await walletSnapshot()) });
+    }
+
+    if (method === "POST" && path === "/payments/simulate") {
+      const body = JSON.parse(event.body || "{}");
+      const amount = parseFloat(body.amount);
+      const currency = body.currency;
+      if (!(amount > 0) || !MOCK_USDC_RATE[currency]) {
+        return json(400, { error: "amount must be > 0 and currency must be one of " + Object.keys(MOCK_USDC_RATE).join(", ") });
+      }
+      const amountUsdc = amount * MOCK_USDC_RATE[currency];
+
+      const current = await walletSnapshot();
+      if (amountUsdc > current.balanceUsdc) {
+        return json(400, { error: "insufficient_balance", balanceUsdc: current.balanceUsdc });
+      }
+
+      const entry = {
+        entryId: `sim:${randomUUID()}`,
+        type: "simulated_payment",
+        status: "confirmed",
+        amountUsdc: -amountUsdc,
+        txHash: null,
+        originalAmount: amount,
+        originalCurrency: currency,
+        method: body.method || null,
+        country: body.country || null,
+        createdAt: new Date().toISOString(),
+        confirmedAt: new Date().toISOString(),
+      };
+      await putEntryIfAbsent(entry);
+      return json(201, { entry, ...(await walletSnapshot()) });
+    }
+
+    return json(404, { error: "not_found" });
+  } catch (err) {
+    console.error(err);
+    return json(500, { error: "internal_error", message: err.message });
+  }
+}

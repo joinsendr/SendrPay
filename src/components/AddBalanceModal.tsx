@@ -1,23 +1,25 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { ChevronRight, Check, Loader2, Landmark, Zap, ArrowLeftRight, Shield, Copy } from "lucide-react";
+import {
+  ChevronRight, Check, Loader2, Landmark, Zap, ArrowLeftRight, Shield, Copy, ExternalLink, RefreshCw,
+} from "lucide-react";
 import { Modal } from "./Modal";
 import { useWallet } from "../context/WalletContext";
+import { getDepositAddress, stellarExplorerUrl, type DepositAddressInfo, type LedgerEntry } from "../lib/api";
 import {
   DEPOSIT_CURRENCIES, CURRENCY_SYMBOL, MOCK_USDC_RATE, FUNDING_OPTIONS,
   type DepositCurrency, type FundingOption, type FundingIcon,
 } from "../data/depositData";
-import { STELLAR_USDC_TESTNET_ADDRESS, STELLAR_NETWORK_LABEL } from "../data/stellarData";
 
 type Step = "currency" | "amount" | "funding" | "processing" | "success" | "receiveUsdc";
 
 const STEP_TITLE: Record<Step, string> = {
   currency: "Add Balance",
   amount: "Deposit amount",
-  funding: "Choose a funding method",
+  funding: "Fiat funding (Demo)",
   processing: "Processing deposit",
   success: "Add Balance",
-  receiveUsdc: "Receive USDC",
+  receiveUsdc: "USDC on Stellar",
 };
 
 function truncateAddress(addr: string): string {
@@ -39,17 +41,31 @@ const initialState = {
   creditedUsdc: 0,
 };
 
+// Polls the backend (which in turn checks real Stellar testnet payment
+// operations) every few seconds while the receive screen is open, so a
+// deposit sent from an external wallet shows up without the user having to
+// manually refresh. The backend also polls independently on its own
+// schedule (EventBridge, every 1 min), so a deposit is detected even if no
+// one has this screen open.
+const POLL_INTERVAL_MS = 4000;
+
 export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { addDeposit } = useWallet();
+  const { fundSimulated, checkForDeposits } = useWallet();
   const [state, setState] = useState(initialState);
   const [addressCopied, setAddressCopied] = useState(false);
+  const [depositInfo, setDepositInfo] = useState<DepositAddressInfo | null>(null);
+  const [addressError, setAddressError] = useState("");
+  const [justDetected, setJustDetected] = useState<LedgerEntry | null>(null);
+  const [checking, setChecking] = useState(false);
   const { step, currency, amount, option, creditedUsdc } = state;
 
   const reset = () => setState(initialState);
   const close = () => {
     onClose();
-    // Reset after the close animation so a mid-flow jump isn't visible
-    window.setTimeout(reset, 200);
+    window.setTimeout(() => {
+      reset();
+      setJustDetected(null);
+    }, 200);
   };
 
   const goBack = () => {
@@ -58,9 +74,46 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
     else if (step === "receiveUsdc") setState((s) => ({ ...s, step: "currency" }));
   };
 
+  // Load the real deposit address + asset/issuer/network info once, when
+  // the receive screen is first opened.
+  useEffect(() => {
+    if (step !== "receiveUsdc" || depositInfo || addressError) return;
+    getDepositAddress()
+      .then(setDepositInfo)
+      .catch((e) => setAddressError(e.message ?? "Could not load the deposit address"));
+  }, [step, depositInfo, addressError]);
+
+  // Auto-poll for new deposits while the receive screen is open.
+  useEffect(() => {
+    if (step !== "receiveUsdc" || !depositInfo) return;
+    let cancelled = false;
+
+    const poll = async () => {
+      setChecking(true);
+      try {
+        const result = await checkForDeposits();
+        if (cancelled) return;
+        const freshDeposit = result.newlyCredited.find((e) => e.type === "stellar_deposit");
+        if (freshDeposit) setJustDetected(freshDeposit);
+      } catch {
+        // transient network/API hiccup — next poll tick will retry
+      } finally {
+        if (!cancelled) setChecking(false);
+      }
+    };
+
+    poll();
+    const id = window.setInterval(poll, POLL_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [step, depositInfo, checkForDeposits]);
+
   const copyAddress = async () => {
+    if (!depositInfo) return;
     try {
-      await navigator.clipboard.writeText(STELLAR_USDC_TESTNET_ADDRESS);
+      await navigator.clipboard.writeText(depositInfo.address);
       setAddressCopied(true);
       window.setTimeout(() => setAddressCopied(false), 1500);
     } catch {
@@ -70,14 +123,16 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
 
   const selectCurrency = (c: DepositCurrency) => setState((s) => ({ ...s, currency: c, step: "amount" }));
 
-  const selectOption = (opt: FundingOption) => {
+  const selectOption = async (opt: FundingOption) => {
     if (!currency) return;
-    const usdc = parseFloat(amount) * MOCK_USDC_RATE[currency];
+    const amt = parseFloat(amount);
     setState((s) => ({ ...s, option: opt, step: "processing" }));
-    window.setTimeout(() => {
-      addDeposit(usdc);
-      setState((s) => ({ ...s, creditedUsdc: usdc, step: "success" }));
-    }, 1500);
+    try {
+      const entry = await fundSimulated(amt, currency, opt.label);
+      setState((s) => ({ ...s, creditedUsdc: entry.amountUsdc, step: "success" }));
+    } catch {
+      setState((s) => ({ ...s, step: "funding" }));
+    }
   };
 
   const previewUsdc = currency && parseFloat(amount) > 0 ? parseFloat(amount) * MOCK_USDC_RATE[currency] : null;
@@ -91,7 +146,7 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
     >
       {step === "currency" && (
         <div>
-          <p className="mb-2 text-sm text-neutral-500">Fund directly with USDC:</p>
+          <p className="mb-2 text-sm text-neutral-500">Fund directly on-chain:</p>
           <button
             type="button"
             onClick={() => setState((s) => ({ ...s, step: "receiveUsdc" }))}
@@ -102,14 +157,14 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
                 $
               </span>
               <span>
-                USDC
-                <span className="block text-xs font-normal text-neutral-400">Send directly via Stellar</span>
+                USDC on Stellar
+                <span className="block text-xs font-normal text-neutral-400">Real testnet deposit, verified on-chain</span>
               </span>
             </span>
             <ChevronRight className="h-4 w-4 text-neutral-300" />
           </button>
 
-          <p className="mb-2 text-sm text-neutral-500">Or fund from a bank or card:</p>
+          <p className="mb-2 text-sm text-neutral-500">Or fiat funding (Demo):</p>
           <div className="space-y-1.5">
             {DEPOSIT_CURRENCIES.map((c) => (
               <button
@@ -134,13 +189,44 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
       {step === "receiveUsdc" && (
         <div className="flex flex-col items-center py-2 text-center">
           <span className="mb-4 rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-500">
-            {STELLAR_NETWORK_LABEL}
+            {depositInfo ? `${depositInfo.network === "TESTNET" ? "Stellar Testnet" : depositInfo.network}` : "Stellar Testnet"}
           </span>
 
-          {STELLAR_USDC_TESTNET_ADDRESS ? (
+          {addressError ? (
+            <div className="py-6">
+              <p className="text-sm font-medium text-neutral-900">Couldn't load the deposit address</p>
+              <p className="mt-1.5 max-w-[20rem] text-sm text-neutral-500">{addressError}</p>
+            </div>
+          ) : !depositInfo ? (
+            <div className="flex flex-col items-center py-10">
+              <Loader2 className="h-6 w-6 animate-spin text-neutral-400" />
+            </div>
+          ) : justDetected ? (
+            <>
+              <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-neutral-900">
+                <Check className="h-6 w-6 text-white" />
+              </span>
+              <p className="text-sm font-semibold text-neutral-900">Deposit confirmed</p>
+              <p className="mt-1 text-2xl font-extrabold tracking-tight text-neutral-900 tabular-nums">
+                +{justDetected.amountUsdc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-base font-semibold text-neutral-400">USDC</span>
+              </p>
+              <p className="mt-1 text-xs text-neutral-400">Verified from actual Stellar testnet transaction data.</p>
+              {justDetected.txHash && (
+                <a
+                  href={stellarExplorerUrl(justDetected.txHash)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 flex items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs font-medium text-neutral-900 transition-colors hover:bg-neutral-50"
+                >
+                  View transaction
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </>
+          ) : (
             <>
               <div className="mb-4 rounded-2xl border border-neutral-200 p-3">
-                <QRCodeSVG value={STELLAR_USDC_TESTNET_ADDRESS} size={176} />
+                <QRCodeSVG value={depositInfo.address} size={176} />
               </div>
               <p className="mb-1.5 text-xs text-neutral-400">Your Sendr Pay USDC address</p>
               <button
@@ -148,23 +234,32 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
                 onClick={copyAddress}
                 className="flex items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 font-mono text-xs font-medium text-neutral-900 transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900"
               >
-                {truncateAddress(STELLAR_USDC_TESTNET_ADDRESS)}
+                {truncateAddress(depositInfo.address)}
                 <Copy className="h-3.5 w-3.5" />
               </button>
               {addressCopied && <p className="mt-1.5 text-xs text-neutral-400">Copied</p>}
 
-              <p className="mt-4 max-w-[20rem] text-xs text-neutral-400">
-                Only send USDC on the Stellar network to this address. Sending any other asset or network may result in permanent loss.
+              <dl className="mt-4 w-full space-y-1.5 rounded-xl border border-neutral-100 bg-neutral-50 p-3 text-left text-xs">
+                <div className="flex items-center justify-between">
+                  <dt className="text-neutral-400">Asset</dt>
+                  <dd className="font-mono font-medium text-neutral-900">{depositInfo.asset.code}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="shrink-0 text-neutral-400">Issuer</dt>
+                  <dd className="truncate font-mono font-medium text-neutral-900">{truncateAddress(depositInfo.asset.issuer)}</dd>
+                </div>
+              </dl>
+
+              <div className="mt-4 flex items-center gap-1.5 text-xs font-medium text-neutral-500">
+                {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                Awaiting deposit — checking automatically
+              </div>
+
+              <p className="mt-3 max-w-[20rem] text-xs text-neutral-400">
+                Only send USDC issued by the address above, on Stellar Testnet, to this address. Any other asset or network may result in permanent loss.
               </p>
               <p className="mt-2 text-[11px] font-medium text-neutral-300">Testnet only — for testing, not real funds.</p>
             </>
-          ) : (
-            <div className="py-6">
-              <p className="text-sm font-medium text-neutral-900">Testnet address not yet configured</p>
-              <p className="mt-1.5 max-w-[20rem] text-sm text-neutral-500">
-                A Stellar testnet USDC receiving address hasn't been added yet.
-              </p>
-            </div>
           )}
 
           <button
@@ -199,7 +294,7 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
             <span className="text-sm font-medium text-neutral-400">{currency}</span>
           </div>
           <p className="mt-1.5 h-4 text-xs text-neutral-400">
-            {previewUsdc != null && `≈ ${previewUsdc.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC`}
+            {previewUsdc != null && `≈ ${previewUsdc.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC · illustrative rate`}
           </p>
 
           <button
@@ -215,7 +310,7 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
 
       {step === "funding" && currency && (
         <div className="space-y-1.5">
-          <p className="mb-2 text-sm text-neutral-500">Available ways to send {currency}:</p>
+          <p className="mb-2 text-sm text-neutral-500">Available ways to send {currency} (simulated):</p>
           {FUNDING_OPTIONS[currency].map((opt) => {
             const Icon = OPTION_ICON[opt.icon];
             return (
@@ -243,7 +338,7 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
         <div className="flex flex-col items-center py-8 text-center">
           <Loader2 className="mb-4 h-8 w-8 animate-spin text-neutral-900" />
           <p className="text-sm font-medium text-neutral-900">Processing your deposit via {option.label}…</p>
-          <p className="mt-1 text-xs text-neutral-400">This is a demo — no real money is moved.</p>
+          <p className="mt-1 text-xs text-neutral-400">Demo — simulated, no real money is moved.</p>
         </div>
       )}
 
@@ -272,7 +367,7 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
             </div>
           </dl>
 
-          <p className="mt-3 text-center text-xs text-neutral-400">Logged as "Wallet Top-up" in your transaction history.</p>
+          <p className="mt-3 text-center text-xs text-neutral-400">Logged as simulated fiat funding — not a real bank transfer.</p>
 
           <button
             type="button"

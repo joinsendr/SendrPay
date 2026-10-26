@@ -5,6 +5,7 @@ import { TransactionHistory } from "../components/TransactionHistory";
 import { TransactionDetailsModal } from "../components/TransactionDetailsModal";
 import { AddBalanceModal } from "../components/AddBalanceModal";
 import { useWallet } from "../context/WalletContext";
+import { ledgerEntryToTransaction } from "../lib/ledgerAdapter";
 import { Plus } from "lucide-react";
 import type { Transaction } from "../types";
 
@@ -29,7 +30,7 @@ export function WalletScreen() {
         </button>
       </div>
 
-      <TransactionHistory transactions={transactions} onSelect={setSelectedTxn} />
+      <TransactionHistory transactions={transactions.map(ledgerEntryToTransaction)} onSelect={setSelectedTxn} />
 
       <TransactionDetailsModal txn={selectedTxn} onClose={() => setSelectedTxn(null)} />
       <AddBalanceModal open={addBalanceOpen} onClose={() => setAddBalanceOpen(false)} />
