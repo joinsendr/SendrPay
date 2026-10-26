@@ -31,6 +31,17 @@ Live at [sendrpay.sendr.cash](https://sendrpay.sendr.cash).
 
 The UI does not visually distinguish real vs. simulated transactions (by request) — this table is the authoritative reference for what each transaction type actually does under the hood. The ledger itself still tags every entry with its real `type` (`stellar_deposit`, `upi_payment`, `simulated_fiat`, `simulated_payment`, `upi_payment_reversal`), visible via the `/wallet` API response.
 
+## Pricing
+
+| Flow | Fee | Why |
+|---|---|---|
+| USDC deposit on Stellar (direct) | **None** | No conversion needed — it's already USDC. |
+| Fiat funding (card/bank rail) | **0.5%** flat, deducted from the converted USDC before crediting | Deliberate incentive to fund with USDC directly instead of through a fiat rail — see `FIAT_CONVERSION_FEE_RATE` in `backend/src/config.mjs`. Shown as a full Converted/Fee/You'll-receive breakdown before the user commits. |
+| UPI payment (Pay → scan or enter a UPI ID) | **1%** flat on the USDC side | See `UPI_FEE_RATE` in `backend/src/config.mjs`. Shown on the review screen before confirming. |
+| Other local payment methods (Interac, SEPA, etc.) | None currently modeled | Not part of this pricing pass. |
+
+Both rates are illustrative/configurable constants for this hackathon prototype, unrelated to and not sourced from the actual pricing used by the live [sendr.cash](https://sendr.cash) product.
+
 ### Funding from your own wallet
 
 Inside **Add Balance → USDC on Stellar**, beyond scanning the QR code, there's a **"Connect your wallet to pay directly"** option backed by [Stellar Wallets Kit](https://stellarwalletskit.dev) (`src/lib/walletKit.ts`). It supports Freighter, xBull, Albedo, Rabet, Lobstr, and other Stellar wallets — the connected wallet signs a real USDC payment to the deposit address, which the app submits to Horizon and your backend verifies exactly like any other deposit. The app only ever asks the wallet to sign a transaction it never receives or stores the user's secret key.
@@ -173,7 +184,7 @@ Hosted on AWS S3 (`sendrpay.sendr.cash` bucket) + CloudFront, same pattern as [s
 4. Watch the modal — it polls automatically every few seconds and, once the backend's deposit check picks up the transaction, flips to a **"Deposit confirmed"** view showing the credited amount and a link to the transaction on [Stellar Expert](https://stellar.expert/explorer/testnet).
 5. Return to Home — the wallet balance has updated, computed entirely server-side from the ledger (not from anything the browser sent).
 6. Tap **Add Balance → a fiat option** (e.g. a card or bank rail) to see the fiat funding flow credit the balance instantly.
-7. Tap **Pay → INR → UPI**. Scan (or upload an image of) a UPI QR code — a generator like `https://www.the-qrcode-generator.com` with a `upi://pay?pa=someone@okaxis&pn=Name&am=25&cu=INR` payload works well for a demo QR. The review screen shows the payee, amount, illustrative conversion rate, fee, and total deduction before anything is committed.
+7. Tap **Pay → INR → UPI**. Scan (or upload an image of) a UPI QR code — a generator like `https://www.the-qrcode-generator.com` with a `upi://pay?pa=someone@okaxis&pn=Name&am=25&cu=INR` payload works well for a demo QR — or tap **"Don't have a QR code? Enter UPI ID manually"** to type a UPI ID, payee name, and amount directly. The review screen shows the payee, amount, illustrative conversion rate, the 1% fee, and total deduction before anything is committed.
 8. Confirm the payment — it's processed through the real backend orchestrator (create → confirm → simulated payout → ledger deduction) and shows a payment ID and payout reference on success.
 9. Open the new transaction's detail view, or hit `GET /payments/{paymentId}` directly, to see the full lifecycle record.
 10. Try scanning a non-UPI QR code (any ordinary URL) to show the reject path, and try a payment larger than the current balance to show the insufficient-balance rejection.

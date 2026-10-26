@@ -11,6 +11,8 @@ export interface LedgerEntry {
   type: LedgerEntryType;
   status: LedgerStatus;
   amountUsdc: number;
+  feeUsdc?: number;
+  feeRate?: number;
   txHash: string | null;
   stellarNetwork?: string;
   assetIssuer?: string;

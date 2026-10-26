@@ -21,10 +21,15 @@ export const DEPOSIT_ADDRESS = process.env.STELLAR_DEPOSIT_ADDRESS || "";
 export const LEDGER_TABLE = process.env.LEDGER_TABLE || "sendrpay_ledger";
 export const PAYMENTS_TABLE = process.env.PAYMENTS_TABLE || "sendrpay_payments";
 
-// Illustrative flat fee on the USDC side of a UPI payment — not a real
-// pricing model, just enough to show a non-zero fee line on the review
-// screen. Unrelated to any production Sendr pricing.
+// Flat 1% fee on the USDC side of a UPI payment.
 export const UPI_FEE_RATE = 0.01;
+
+// Flat 0.5% fee applied when funding the wallet via a simulated fiat rail
+// (card/bank/etc). Funding directly with USDC on Stellar has no such fee —
+// this is the deliberate incentive to deposit on-chain instead of through a
+// fiat rail, and must stay reflected on both the funding preview and the
+// credited ledger entry so the two paths are never silently equivalent.
+export const FIAT_CONVERSION_FEE_RATE = 0.005;
 
 // Illustrative only, not a live FX feed — mirrors the rate used by the
 // existing frontend mock funding/payment flows, kept here so the backend's

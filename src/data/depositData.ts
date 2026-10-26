@@ -22,6 +22,13 @@ export const MOCK_USDC_RATE: Record<DepositCurrency, number> = {
   INR: 1 / 85,
 };
 
+// Flat 0.5% fee applied when funding via a simulated fiat rail — mirrors
+// backend/src/config.mjs's FIAT_CONVERSION_FEE_RATE, used here only to show
+// the breakdown before the user commits; the backend is authoritative on
+// what's actually credited. Funding directly with USDC on Stellar has no
+// such fee, which is the point: it's cheaper.
+export const FIAT_CONVERSION_FEE_RATE = 0.005;
+
 export type FundingIcon = "bank" | "instant" | "wise" | "plaid";
 
 export interface FundingOption {

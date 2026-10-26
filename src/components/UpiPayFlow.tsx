@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { Check, Loader2, AlertCircle, ShieldAlert, ArrowLeft } from "lucide-react";
+import { Check, Loader2, AlertCircle, ShieldAlert, ArrowLeft, Keyboard } from "lucide-react";
 import { QrScanner } from "./QrScanner";
-import { parseUpiUri } from "../lib/upiParser";
+import { parseUpiUri, isValidVpa } from "../lib/upiParser";
 import { createPayment, confirmPayment, cancelPayment, type Payment } from "../lib/paymentsApi";
 import { useWallet } from "../context/WalletContext";
 
-type Step = "scan" | "needsAmount" | "reviewing" | "confirming" | "processing" | "succeeded" | "failed" | "cancelled" | "rejected";
+type Step = "scan" | "manualEntry" | "needsAmount" | "reviewing" | "confirming" | "processing" | "succeeded" | "failed" | "cancelled" | "rejected";
 
 const REJECT_REASON_LABEL: Record<string, string> = {
   empty_qr_data: "That QR code didn't contain any data.",
@@ -26,6 +26,9 @@ export function UpiPayFlow({ onDone }: { onDone: () => void }) {
   const [parsedVpa, setParsedVpa] = useState<string | null>(null);
   const [parsedPayeeName, setParsedPayeeName] = useState<string | null>(null);
   const [manualAmount, setManualAmount] = useState("");
+  const [manualVpa, setManualVpa] = useState("");
+  const [manualPayeeName, setManualPayeeName] = useState("");
+  const [manualVpaTouched, setManualVpaTouched] = useState(false);
   const [payment, setPayment] = useState<Payment | null>(null);
   const [paymentId] = useState(() => crypto.randomUUID());
   const [error, setError] = useState("");
@@ -43,15 +46,15 @@ export function UpiPayFlow({ onDone }: { onDone: () => void }) {
     if (parsed.amountInr == null) {
       setStep("needsAmount");
     } else {
-      void requestQuote(raw, undefined);
+      void requestQuote({ qrData: raw });
     }
   };
 
-  const requestQuote = async (qrData: string, amountInr: number | undefined) => {
+  const requestQuote = async (input: { qrData?: string; amountInr?: number; vpa?: string; payeeName?: string }) => {
     setStep("confirming");
     setError("");
     try {
-      const result = await createPayment({ paymentId, qrData, amountInr });
+      const result = await createPayment({ paymentId, ...input });
       setPayment(result);
       setStep(result.status === "awaiting_confirmation" ? "reviewing" : "rejected");
       if (result.status !== "awaiting_confirmation") {
@@ -66,7 +69,15 @@ export function UpiPayFlow({ onDone }: { onDone: () => void }) {
   const submitManualAmount = () => {
     const amt = parseFloat(manualAmount);
     if (!(amt > 0) || !rawQr) return;
-    void requestQuote(rawQr, amt);
+    void requestQuote({ qrData: rawQr, amountInr: amt });
+  };
+
+  const manualVpaValid = isValidVpa(manualVpa.trim());
+
+  const submitManualEntry = () => {
+    const amt = parseFloat(manualAmount);
+    if (!manualVpaValid || !(amt > 0)) return;
+    void requestQuote({ vpa: manualVpa.trim(), payeeName: manualPayeeName.trim() || undefined, amountInr: amt });
   };
 
   const handleConfirm = async () => {
@@ -99,7 +110,92 @@ export function UpiPayFlow({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="flex flex-col items-center px-6 py-4 text-center">
-      {step === "scan" && <QrScanner onDecode={handleDecode} />}
+      {step === "scan" && (
+        <div className="flex flex-col items-center">
+          <QrScanner onDecode={handleDecode} />
+          <button
+            type="button"
+            onClick={() => setStep("manualEntry")}
+            className="mt-4 flex items-center gap-1.5 text-sm font-medium text-neutral-500 transition-colors hover:text-neutral-900"
+          >
+            <Keyboard className="h-4 w-4" />
+            Don't have a QR code? Enter UPI ID manually
+          </button>
+        </div>
+      )}
+
+      {step === "manualEntry" && (
+        <div className="w-full max-w-xs text-left">
+          <p className="mb-4 text-center text-sm font-semibold text-neutral-900">Pay a UPI ID</p>
+
+          <label htmlFor="manual-vpa" className="mb-1.5 block text-sm text-neutral-500">
+            UPI ID
+          </label>
+          <input
+            id="manual-vpa"
+            type="text"
+            inputMode="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            placeholder="someone@bank"
+            value={manualVpa}
+            onChange={(e) => setManualVpa(e.target.value)}
+            onBlur={() => setManualVpaTouched(true)}
+            className="mb-1 w-full rounded-xl border border-neutral-200 px-4 py-3 text-sm font-medium text-neutral-900 outline-none focus:border-neutral-900"
+            autoFocus
+          />
+          {manualVpaTouched && manualVpa.trim().length > 0 && !manualVpaValid && (
+            <p className="mb-2 text-xs font-medium text-red-600">That doesn't look like a valid UPI ID (e.g. name@bank).</p>
+          )}
+
+          <label htmlFor="manual-name" className="mb-1.5 mt-3 block text-sm text-neutral-500">
+            Payee name <span className="text-neutral-300">(optional)</span>
+          </label>
+          <input
+            id="manual-name"
+            type="text"
+            placeholder="Who are you paying?"
+            value={manualPayeeName}
+            onChange={(e) => setManualPayeeName(e.target.value)}
+            className="mb-3 w-full rounded-xl border border-neutral-200 px-4 py-3 text-sm font-medium text-neutral-900 outline-none focus:border-neutral-900"
+          />
+
+          <label htmlFor="manual-amount" className="mb-1.5 block text-sm text-neutral-500">
+            Amount
+          </label>
+          <div className="flex items-center gap-2 rounded-xl border border-neutral-200 px-4 py-3 focus-within:border-neutral-900">
+            <span className="text-lg font-semibold text-neutral-400">₹</span>
+            <input
+              id="manual-amount"
+              type="number"
+              inputMode="decimal"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+              value={manualAmount}
+              onChange={(e) => setManualAmount(e.target.value)}
+              className="w-full bg-transparent text-xl font-semibold text-neutral-900 outline-none placeholder:text-neutral-300"
+            />
+            <span className="text-sm font-medium text-neutral-400">INR</span>
+          </div>
+
+          <button
+            type="button"
+            disabled={!manualVpaValid || !(parseFloat(manualAmount) > 0)}
+            onClick={submitManualEntry}
+            className="mt-4 h-12 w-full rounded-2xl bg-neutral-900 text-sm font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2"
+          >
+            Continue
+          </button>
+          <button
+            type="button"
+            onClick={() => setStep("scan")}
+            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-2xl border border-neutral-200 py-2.5 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-50"
+          >
+            <ArrowLeft className="h-4 w-4" /> Scan a QR code instead
+          </button>
+        </div>
+      )}
 
       {step === "rejected" && (
         <div className="flex flex-col items-center py-6">
@@ -188,7 +284,7 @@ export function UpiPayFlow({ onDone }: { onDone: () => void }) {
               <dd className="font-medium text-neutral-900">{payment.amountUsdc?.toLocaleString(undefined, { maximumFractionDigits: 4 })} USDC</dd>
             </div>
             <div className="flex items-center justify-between">
-              <dt className="text-neutral-400">Fee</dt>
+              <dt className="text-neutral-400">Fee (1%)</dt>
               <dd className="font-medium text-neutral-900">{payment.feeUsdc?.toLocaleString(undefined, { maximumFractionDigits: 4 })} USDC</dd>
             </div>
             <div className="flex items-center justify-between border-t border-neutral-200 pt-2.5">

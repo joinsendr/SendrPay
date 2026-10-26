@@ -7,6 +7,10 @@
 // alongside it.
 const VPA_PATTERN = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z][a-zA-Z0-9]{1,64}$/;
 
+export function isValidVpa(vpa: string): boolean {
+  return VPA_PATTERN.test(vpa);
+}
+
 export interface ParsedUpi {
   valid: boolean;
   reason?: string;

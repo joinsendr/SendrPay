@@ -7,7 +7,7 @@ import { Modal } from "./Modal";
 import { useWallet } from "../context/WalletContext";
 import { getDepositAddress, stellarExplorerUrl, type DepositAddressInfo, type LedgerEntry } from "../lib/api";
 import {
-  DEPOSIT_CURRENCIES, CURRENCY_SYMBOL, MOCK_USDC_RATE, FUNDING_OPTIONS,
+  DEPOSIT_CURRENCIES, CURRENCY_SYMBOL, MOCK_USDC_RATE, FUNDING_OPTIONS, FIAT_CONVERSION_FEE_RATE,
   type DepositCurrency, type FundingOption, type FundingIcon,
 } from "../data/depositData";
 import { connectWallet, disconnectWallet, getWalletUsdcStatus, sendUsdcPayment, USDC_ISSUER, type WalletUsdcStatus } from "../lib/walletKit";
@@ -41,6 +41,7 @@ const initialState = {
   amount: "",
   option: null as FundingOption | null,
   creditedUsdc: 0,
+  creditedFeeUsdc: 0,
 };
 
 // Polls the backend (which in turn checks real Stellar testnet payment
@@ -59,7 +60,7 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
   const [addressError, setAddressError] = useState("");
   const [justDetected, setJustDetected] = useState<LedgerEntry | null>(null);
   const [checking, setChecking] = useState(false);
-  const { step, currency, amount, option, creditedUsdc } = state;
+  const { step, currency, amount, option, creditedUsdc, creditedFeeUsdc } = state;
 
   // Browser wallet connect (Freighter/xBull/Albedo/Rabet/etc.) state — lets
   // someone fund the wallet by signing directly from their own Stellar
@@ -198,13 +199,16 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
     setState((s) => ({ ...s, option: opt, step: "processing" }));
     try {
       const entry = await fundSimulated(amt, currency, opt.label);
-      setState((s) => ({ ...s, creditedUsdc: entry.amountUsdc, step: "success" }));
+      setState((s) => ({ ...s, creditedUsdc: entry.amountUsdc, creditedFeeUsdc: entry.feeUsdc ?? 0, step: "success" }));
     } catch {
       setState((s) => ({ ...s, step: "funding" }));
     }
   };
 
-  const previewUsdc = currency && parseFloat(amount) > 0 ? parseFloat(amount) * MOCK_USDC_RATE[currency] : null;
+  const previewAmt = currency && parseFloat(amount) > 0 ? parseFloat(amount) : null;
+  const previewGrossUsdc = previewAmt != null && currency ? previewAmt * MOCK_USDC_RATE[currency] : null;
+  const previewFeeUsdc = previewGrossUsdc != null ? previewGrossUsdc * FIAT_CONVERSION_FEE_RATE : null;
+  const previewNetUsdc = previewGrossUsdc != null && previewFeeUsdc != null ? previewGrossUsdc - previewFeeUsdc : null;
 
   return (
     <Modal
@@ -510,8 +514,25 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
             />
             <span className="text-sm font-medium text-neutral-400">{currency}</span>
           </div>
-          <p className="mt-1.5 h-4 text-xs text-neutral-400">
-            {previewUsdc != null && `≈ ${previewUsdc.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC · illustrative rate`}
+
+          {previewGrossUsdc != null && previewFeeUsdc != null && previewNetUsdc != null && (
+            <dl className="mt-3 space-y-2 rounded-xl border border-neutral-100 bg-neutral-50 p-3.5 text-sm">
+              <div className="flex items-center justify-between">
+                <dt className="text-neutral-400">Converted</dt>
+                <dd className="font-medium text-neutral-900">{previewGrossUsdc.toLocaleString(undefined, { maximumFractionDigits: 4 })} USDC</dd>
+              </div>
+              <div className="flex items-center justify-between">
+                <dt className="text-neutral-400">Conversion fee (0.5%)</dt>
+                <dd className="font-medium text-neutral-900">−{previewFeeUsdc.toLocaleString(undefined, { maximumFractionDigits: 4 })} USDC</dd>
+              </div>
+              <div className="flex items-center justify-between border-t border-neutral-200 pt-2">
+                <dt className="font-medium text-neutral-500">You'll receive</dt>
+                <dd className="font-semibold text-neutral-900">{previewNetUsdc.toLocaleString(undefined, { maximumFractionDigits: 4 })} USDC</dd>
+              </div>
+            </dl>
+          )}
+          <p className="mt-2 text-xs text-neutral-400">
+            Rate is illustrative. Fund directly with USDC on Stellar instead to skip this fee entirely.
           </p>
 
           <button
@@ -581,6 +602,12 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
               <dt className="text-neutral-400">Method</dt>
               <dd className="font-medium text-neutral-900">{option.label}</dd>
             </div>
+            {creditedFeeUsdc > 0 && (
+              <div className="flex items-center justify-between">
+                <dt className="text-neutral-400">Conversion fee (0.5%)</dt>
+                <dd className="font-medium text-neutral-900">−{creditedFeeUsdc.toLocaleString(undefined, { maximumFractionDigits: 4 })} USDC</dd>
+              </div>
+            )}
           </dl>
 
           <button

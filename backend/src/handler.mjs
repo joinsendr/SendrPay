@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
-  STELLAR_NETWORK, HORIZON_URL, DEPOSIT_ADDRESS, USDC_ASSET_CODE, USDC_ISSUER, MOCK_USDC_RATE,
+  STELLAR_NETWORK, HORIZON_URL, DEPOSIT_ADDRESS, USDC_ASSET_CODE, USDC_ISSUER, MOCK_USDC_RATE, FIAT_CONVERSION_FEE_RATE,
 } from "./config.mjs";
 import { listEntries, putEntryIfAbsent } from "./ledger.mjs";
 import { computeBalance } from "./depositValidation.mjs";
@@ -98,12 +98,20 @@ export async function handler(event) {
       if (!(amount > 0) || !MOCK_USDC_RATE[currency]) {
         return json(400, { error: "amount must be > 0 and currency must be one of " + Object.keys(MOCK_USDC_RATE).join(", ") });
       }
-      const amountUsdc = amount * MOCK_USDC_RATE[currency];
+      // Fiat funding carries a flat conversion fee that a direct USDC-on-
+      // Stellar deposit never does — the fee is deducted here, before
+      // crediting, so the ledger entry's amountUsdc is always the NET
+      // amount actually credited, not the gross conversion.
+      const grossUsdc = amount * MOCK_USDC_RATE[currency];
+      const feeUsdc = grossUsdc * FIAT_CONVERSION_FEE_RATE;
+      const netUsdc = grossUsdc - feeUsdc;
       const entry = {
         entryId: `sim:${randomUUID()}`,
         type: "simulated_fiat",
         status: "confirmed",
-        amountUsdc,
+        amountUsdc: netUsdc,
+        feeUsdc,
+        feeRate: FIAT_CONVERSION_FEE_RATE,
         txHash: null,
         originalAmount: amount,
         originalCurrency: currency,
