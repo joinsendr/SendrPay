@@ -4,6 +4,7 @@ import {
 } from "lucide-react";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { Modal } from "../components/Modal";
+import profilePhoto from "../assets/profile-photo.jpg";
 
 const CURRENCIES = ["USD", "INR", "CAD", "EUR", "GBP", "CHF"] as const;
 
@@ -11,11 +12,13 @@ function InfoRow({
   Icon,
   label,
   value,
+  valueClassName,
   onClick,
 }: {
   Icon: React.ElementType;
   label: string;
   value?: string;
+  valueClassName?: string;
   onClick: () => void;
 }) {
   return (
@@ -28,7 +31,7 @@ function InfoRow({
         <Icon className="h-4 w-4" />
       </span>
       <span className="flex-1 text-sm font-medium text-neutral-900">{label}</span>
-      {value && <span className="text-sm text-neutral-400">{value}</span>}
+      {value && <span className={`text-sm ${valueClassName ?? "text-neutral-400"}`}>{value}</span>}
       <ChevronRight className="h-4 w-4 text-neutral-300" />
     </button>
   );
@@ -44,12 +47,14 @@ export function SettingsScreen() {
       <ScreenHeader title="Settings" />
 
       <div className="flex items-center gap-3 px-5 py-4">
-        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-neutral-900 text-white">
-          <User className="h-6 w-6" />
-        </span>
+        <img
+          src={profilePhoto}
+          alt="Varinder Vaish"
+          className="h-14 w-14 shrink-0 rounded-full object-cover"
+        />
         <div>
-          <p className="text-sm font-semibold text-neutral-900">Sendr Pay User</p>
-          <p className="text-xs text-neutral-400">demo@sendr.cash</p>
+          <p className="text-sm font-semibold text-neutral-900">Varinder Vaish</p>
+          <p className="text-xs text-neutral-400">varinder@sendr.cash</p>
         </div>
       </div>
 
@@ -63,8 +68,9 @@ export function SettingsScreen() {
           <InfoRow
             Icon={ShieldCheck}
             label="Security & verification"
-            value="Not started"
-            onClick={() => setInfoModal({ title: "Security & verification", body: "Identity verification will be required before real payments go live." })}
+            value="Verified"
+            valueClassName="font-medium text-emerald-600"
+            onClick={() => setInfoModal({ title: "Security & verification", body: "Identity verified. Full KYC/compliance checks will be required before real payments go live." })}
           />
           <InfoRow Icon={Globe} label="Display currency" value={currency} onClick={() => setCurrencyOpen(true)} />
           <InfoRow
