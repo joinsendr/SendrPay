@@ -11,6 +11,8 @@
     "deploy": "npm run build && aws s3 sync dist/ s3://sendrpay.sendr.cash --delete --exclude \"index.html\" --cache-control \"max-age=31536000,public,immutable\" && aws s3 cp dist/index.html s3://sendrpay.sendr.cash/index.html --cache-control \"no-cache,no-store,must-revalidate\" && aws cloudfront create-invalidation --distribution-id EVTH16R3Q6GSJ --paths \"/*\""
   },
   "dependencies": {
+    "@creit.tech/stellar-wallets-kit": "^2.7.1",
+    "@stellar/stellar-sdk": "^17.4.0",
     "lucide-react": "^1.61.0",
     "qrcode.react": "^4.2.0",
     "react": "^19.3.1",

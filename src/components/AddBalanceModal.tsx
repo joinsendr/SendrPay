@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import {
-  ChevronRight, Check, Loader2, Landmark, Zap, ArrowLeftRight, Shield, Copy, ExternalLink, RefreshCw,
+  ChevronRight, Check, Loader2, Landmark, Zap, ArrowLeftRight, Shield, Copy, ExternalLink, RefreshCw, Wallet, AlertTriangle,
 } from "lucide-react";
 import { Modal } from "./Modal";
 import { useWallet } from "../context/WalletContext";
@@ -10,8 +10,9 @@ import {
   DEPOSIT_CURRENCIES, CURRENCY_SYMBOL, MOCK_USDC_RATE, FUNDING_OPTIONS,
   type DepositCurrency, type FundingOption, type FundingIcon,
 } from "../data/depositData";
+import { connectWallet, disconnectWallet, getWalletUsdcStatus, sendUsdcPayment, USDC_ISSUER, type WalletUsdcStatus } from "../lib/walletKit";
 
-type Step = "currency" | "amount" | "funding" | "processing" | "success" | "receiveUsdc";
+type Step = "currency" | "amount" | "funding" | "processing" | "success" | "receiveUsdc" | "connectWallet";
 
 const STEP_TITLE: Record<Step, string> = {
   currency: "Add Balance",
@@ -20,6 +21,7 @@ const STEP_TITLE: Record<Step, string> = {
   processing: "Processing deposit",
   success: "Add Balance",
   receiveUsdc: "USDC on Stellar",
+  connectWallet: "Pay from your wallet",
 };
 
 function truncateAddress(addr: string): string {
@@ -59,12 +61,29 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
   const [checking, setChecking] = useState(false);
   const { step, currency, amount, option, creditedUsdc } = state;
 
+  // Browser wallet connect (Freighter/xBull/Albedo/Rabet/etc.) state — lets
+  // someone fund the wallet by signing directly from their own Stellar
+  // testnet wallet, instead of only being able to paste the address into an
+  // external app.
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [walletStatus, setWalletStatus] = useState<WalletUsdcStatus | null>(null);
+  const [walletPhase, setWalletPhase] = useState<"idle" | "connecting" | "loadingBalance" | "sending" | "sent" | "error">("idle");
+  const [walletError, setWalletError] = useState("");
+  const [sendAmount, setSendAmount] = useState("");
+  const [sentTxHash, setSentTxHash] = useState<string | null>(null);
+
   const reset = () => setState(initialState);
   const close = () => {
     onClose();
     window.setTimeout(() => {
       reset();
       setJustDetected(null);
+      setWalletAddress(null);
+      setWalletStatus(null);
+      setWalletPhase("idle");
+      setWalletError("");
+      setSendAmount("");
+      setSentTxHash(null);
     }, 200);
   };
 
@@ -72,20 +91,70 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
     if (step === "amount") setState((s) => ({ ...s, step: "currency" }));
     else if (step === "funding") setState((s) => ({ ...s, step: "amount" }));
     else if (step === "receiveUsdc") setState((s) => ({ ...s, step: "currency" }));
+    else if (step === "connectWallet") setState((s) => ({ ...s, step: "receiveUsdc" }));
+  };
+
+  const handleConnectWallet = async () => {
+    setWalletPhase("connecting");
+    setWalletError("");
+    try {
+      const address = await connectWallet();
+      setWalletAddress(address);
+      setWalletPhase("loadingBalance");
+      const status = await getWalletUsdcStatus(address);
+      setWalletStatus(status);
+      setWalletPhase("idle");
+    } catch (e) {
+      setWalletPhase("error");
+      setWalletError(e instanceof Error ? e.message : "Couldn't connect to a wallet");
+    }
+  };
+
+  const handleDisconnectWallet = async () => {
+    try {
+      await disconnectWallet();
+    } catch {
+      // non-critical — we still clear local state below
+    }
+    setWalletAddress(null);
+    setWalletStatus(null);
+    setWalletPhase("idle");
+    setWalletError("");
+    setSendAmount("");
+  };
+
+  const handleSendFromWallet = async () => {
+    if (!walletAddress || !depositInfo) return;
+    const amt = parseFloat(sendAmount);
+    if (!(amt > 0)) return;
+    setWalletPhase("sending");
+    setWalletError("");
+    try {
+      const hash = await sendUsdcPayment(walletAddress, depositInfo.address, sendAmount);
+      setSentTxHash(hash);
+      setWalletPhase("sent");
+      // Nudge the backend to pick this up immediately instead of waiting
+      // for the next ~1-minute scheduled poll.
+      checkForDeposits().catch(() => {});
+    } catch (e) {
+      setWalletPhase("error");
+      setWalletError(e instanceof Error ? e.message : "Transaction failed or was rejected");
+    }
   };
 
   // Load the real deposit address + asset/issuer/network info once, when
   // the receive screen is first opened.
   useEffect(() => {
-    if (step !== "receiveUsdc" || depositInfo || addressError) return;
+    if ((step !== "receiveUsdc" && step !== "connectWallet") || depositInfo || addressError) return;
     getDepositAddress()
       .then(setDepositInfo)
       .catch((e) => setAddressError(e.message ?? "Could not load the deposit address"));
   }, [step, depositInfo, addressError]);
 
-  // Auto-poll for new deposits while the receive screen is open.
+  // Auto-poll for new deposits while the receive screen (or the connect-
+  // wallet screen, which can also produce a real deposit) is open.
   useEffect(() => {
-    if (step !== "receiveUsdc" || !depositInfo) return;
+    if ((step !== "receiveUsdc" && step !== "connectWallet") || !depositInfo) return;
     let cancelled = false;
 
     const poll = async () => {
@@ -259,6 +328,15 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
                 Only send USDC issued by the address above, on Stellar Testnet, to this address. Any other asset or network may result in permanent loss.
               </p>
               <p className="mt-2 text-[11px] font-medium text-neutral-300">Testnet only — for testing, not real funds.</p>
+
+              <button
+                type="button"
+                onClick={() => setState((s) => ({ ...s, step: "connectWallet" }))}
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-neutral-200 px-4 py-2.5 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900"
+              >
+                <Wallet className="h-4 w-4" />
+                Or connect your wallet to pay directly
+              </button>
             </>
           )}
 
@@ -269,6 +347,145 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
           >
             Done
           </button>
+        </div>
+      )}
+
+      {step === "connectWallet" && (
+        <div className="flex flex-col items-center py-2 text-center">
+          <span className="mb-4 rounded-full bg-neutral-100 px-3 py-1 text-xs font-medium text-neutral-500">
+            Stellar Testnet
+          </span>
+
+          {justDetected ? (
+            <>
+              <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-neutral-900">
+                <Check className="h-6 w-6 text-white" />
+              </span>
+              <p className="text-sm font-semibold text-neutral-900">Deposit confirmed</p>
+              <p className="mt-1 text-2xl font-extrabold tracking-tight text-neutral-900 tabular-nums">
+                +{justDetected.amountUsdc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-base font-semibold text-neutral-400">USDC</span>
+              </p>
+              <p className="mt-1 text-xs text-neutral-400">Verified from actual Stellar testnet transaction data.</p>
+              {justDetected.txHash && (
+                <a
+                  href={stellarExplorerUrl(justDetected.txHash)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-3 flex items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs font-medium text-neutral-900 transition-colors hover:bg-neutral-50"
+                >
+                  View transaction
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              )}
+            </>
+          ) : walletPhase === "sent" && sentTxHash ? (
+            <>
+              <Loader2 className="mb-4 h-8 w-8 animate-spin text-neutral-900" />
+              <p className="text-sm font-semibold text-neutral-900">Payment sent — confirming on-chain…</p>
+              <p className="mt-1 text-xs text-neutral-400">Usually picked up within a few seconds.</p>
+              <a
+                href={stellarExplorerUrl(sentTxHash)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 flex items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 text-xs font-medium text-neutral-900 transition-colors hover:bg-neutral-50"
+              >
+                View transaction
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            </>
+          ) : !walletAddress ? (
+            <>
+              <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-neutral-100">
+                <Wallet className="h-6 w-6 text-neutral-500" />
+              </span>
+              <p className="text-sm font-semibold text-neutral-900">Connect a Stellar testnet wallet</p>
+              <p className="mt-1.5 max-w-[20rem] text-xs text-neutral-400">
+                Freighter, xBull, Albedo, Rabet, Lobstr, and others are supported. You'll approve the payment in your wallet — Sendr Pay never sees your secret key.
+              </p>
+              {walletPhase === "error" && (
+                <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-red-600">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  {walletError}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={handleConnectWallet}
+                disabled={walletPhase === "connecting"}
+                className="mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-neutral-900 text-sm font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2"
+              >
+                {walletPhase === "connecting" && <Loader2 className="h-4 w-4 animate-spin" />}
+                {walletPhase === "connecting" ? "Connecting…" : "Connect wallet"}
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="mb-1 text-xs text-neutral-400">Connected</p>
+              <button
+                type="button"
+                onClick={handleDisconnectWallet}
+                className="mb-4 flex items-center gap-1.5 rounded-xl border border-neutral-200 px-3 py-2 font-mono text-xs font-medium text-neutral-900 transition-colors hover:bg-neutral-50"
+                title="Disconnect"
+              >
+                {truncateAddress(walletAddress)}
+              </button>
+
+              {walletPhase === "loadingBalance" ? (
+                <Loader2 className="mb-4 h-5 w-5 animate-spin text-neutral-400" />
+              ) : walletStatus && !walletStatus.hasTrustline ? (
+                <p className="mb-4 flex items-start gap-1.5 rounded-xl border border-amber-200 bg-amber-50 p-3 text-left text-xs text-amber-800">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  This wallet has no USDC trustline yet, so it can't hold or send USDC. Add a trustline to issuer {truncateAddress(USDC_ISSUER)} in your wallet first.
+                </p>
+              ) : walletStatus ? (
+                <p className="mb-4 text-xs text-neutral-400">
+                  Wallet balance: <span className="font-medium text-neutral-700">{walletStatus.balance.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC</span>
+                </p>
+              ) : null}
+
+              <div className="flex w-full items-center gap-2 rounded-xl border border-neutral-200 px-4 py-3 focus-within:border-neutral-900">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.0000001"
+                  placeholder="0.00"
+                  value={sendAmount}
+                  onChange={(e) => setSendAmount(e.target.value)}
+                  className="w-full bg-transparent text-xl font-semibold text-neutral-900 outline-none placeholder:text-neutral-300"
+                  autoFocus
+                />
+                <span className="text-sm font-medium text-neutral-400">USDC</span>
+              </div>
+
+              {walletPhase === "error" && (
+                <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-red-600">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  {walletError}
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={handleSendFromWallet}
+                disabled={!(parseFloat(sendAmount) > 0) || walletPhase === "sending" || !walletStatus?.hasTrustline}
+                className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-neutral-900 text-sm font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2"
+              >
+                {walletPhase === "sending" && <Loader2 className="h-4 w-4 animate-spin" />}
+                {walletPhase === "sending" ? "Sending…" : "Send USDC"}
+              </button>
+            </>
+          )}
+
+          {!justDetected && (
+            <button
+              type="button"
+              onClick={close}
+              className="mt-5 h-11 w-full rounded-2xl border border-neutral-200 text-sm font-semibold text-neutral-700 transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2"
+            >
+              Cancel
+            </button>
+          )}
         </div>
       )}
 

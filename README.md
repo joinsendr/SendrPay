@@ -30,6 +30,10 @@ Live at [sendrpay.sendr.cash](https://sendrpay.sendr.cash).
 
 The app displays a persistent banner reiterating this distinction at all times.
 
+### Funding from your own wallet
+
+Inside **Add Balance → USDC on Stellar**, beyond scanning the QR code, there's a **"Connect your wallet to pay directly"** option backed by [Stellar Wallets Kit](https://stellarwalletskit.dev) (`src/lib/walletKit.ts`). It supports Freighter, xBull, Albedo, Rabet, Lobstr, and other Stellar wallets — the connected wallet signs a real USDC payment to the deposit address, which the app submits to Horizon and your backend verifies exactly like any other deposit. The app only ever asks the wallet to sign a transaction it never receives or stores the user's secret key.
+
 ## Architecture
 
 ```
