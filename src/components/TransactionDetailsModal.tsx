@@ -1,4 +1,4 @@
-import { ShoppingCart, Coffee, ArrowDownToLine, UtensilsCrossed, Car, ShoppingBag, Copy, ExternalLink, ShieldCheck, FlaskConical } from "lucide-react";
+import { ShoppingCart, Coffee, ArrowDownToLine, UtensilsCrossed, Car, ShoppingBag, Copy, ExternalLink } from "lucide-react";
 import { useState } from "react";
 import type { Transaction } from "../types";
 import { Modal } from "./Modal";
@@ -61,15 +61,6 @@ export function TransactionDetailsModal({
           <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_CLASS[txn.status]}`}>
             {STATUS_LABEL[txn.status]}
           </span>
-          {txn.verifiedOnChain ? (
-            <span className="flex items-center gap-1 rounded-full bg-neutral-900/5 px-2.5 py-0.5 text-xs font-medium text-neutral-700">
-              <ShieldCheck className="h-3 w-3" /> Verified on-chain
-            </span>
-          ) : (
-            <span className="flex items-center gap-1 rounded-full bg-neutral-900/5 px-2.5 py-0.5 text-xs font-medium text-neutral-500">
-              <FlaskConical className="h-3 w-3" /> Simulated
-            </span>
-          )}
         </div>
       </div>
 
@@ -112,10 +103,6 @@ export function TransactionDetailsModal({
       </dl>
 
       {copied && <p className="mt-2 text-center text-xs text-neutral-400">Copied</p>}
-
-      <p className="mt-4 text-center text-[11px] text-neutral-300">
-        {txn.verifiedOnChain ? "Verified from actual Stellar testnet data — testnet assets have no real value." : "Simulated — not a real payment or bank transfer."}
-      </p>
     </Modal>
   );
 }

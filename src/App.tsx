@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { SplashScreen } from "./components/SplashScreen";
-import { TestnetBanner } from "./components/TestnetBanner";
 import { BottomNavigation } from "./components/BottomNavigation";
 import { HomeScreen } from "./screens/HomeScreen";
 import { WalletScreen } from "./screens/WalletScreen";
@@ -22,7 +21,6 @@ function App() {
     <WalletProvider>
       <div className="min-h-screen bg-neutral-100 sm:flex sm:items-center sm:justify-center sm:py-10">
         <div className="relative flex min-h-screen w-full flex-col overflow-hidden bg-white sm:min-h-[48rem] sm:max-w-sm sm:rounded-[2.5rem] sm:border sm:border-neutral-200 sm:shadow-2xl">
-          <TestnetBanner />
           <main className="flex-1 overflow-y-auto">
             {activeTab === "home" && (
               <HomeScreen onNavigate={setActiveTab} onOpenPay={() => setActiveTab("pay")} />

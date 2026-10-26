@@ -17,7 +17,7 @@ type Step = "currency" | "amount" | "funding" | "processing" | "success" | "rece
 const STEP_TITLE: Record<Step, string> = {
   currency: "Add Balance",
   amount: "Deposit amount",
-  funding: "Fiat funding (Demo)",
+  funding: "Fund with",
   processing: "Processing deposit",
   success: "Add Balance",
   receiveUsdc: "USDC on Stellar",
@@ -233,7 +233,7 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
             <ChevronRight className="h-4 w-4 text-neutral-300" />
           </button>
 
-          <p className="mb-2 text-sm text-neutral-500">Or fiat funding (Demo):</p>
+          <p className="mb-2 text-sm text-neutral-500">Or fund with:</p>
           <div className="space-y-1.5">
             {DEPOSIT_CURRENCIES.map((c) => (
               <button
@@ -527,7 +527,7 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
 
       {step === "funding" && currency && (
         <div className="space-y-1.5">
-          <p className="mb-2 text-sm text-neutral-500">Available ways to send {currency} (simulated):</p>
+          <p className="mb-2 text-sm text-neutral-500">Available ways to send {currency}:</p>
           {FUNDING_OPTIONS[currency].map((opt) => {
             const Icon = OPTION_ICON[opt.icon];
             return (
@@ -555,7 +555,6 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
         <div className="flex flex-col items-center py-8 text-center">
           <Loader2 className="mb-4 h-8 w-8 animate-spin text-neutral-900" />
           <p className="text-sm font-medium text-neutral-900">Processing your deposit via {option.label}…</p>
-          <p className="mt-1 text-xs text-neutral-400">Demo — simulated, no real money is moved.</p>
         </div>
       )}
 
@@ -583,8 +582,6 @@ export function AddBalanceModal({ open, onClose }: { open: boolean; onClose: () 
               <dd className="font-medium text-neutral-900">{option.label}</dd>
             </div>
           </dl>
-
-          <p className="mt-3 text-center text-xs text-neutral-400">Logged as simulated fiat funding — not a real bank transfer.</p>
 
           <button
             type="button"

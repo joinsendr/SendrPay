@@ -35,7 +35,7 @@ export function ledgerEntryToTransaction(entry: LedgerEntry): Transaction {
   if (entry.type === "simulated_fiat") {
     return {
       id: entry.entryId,
-      merchant: `${entry.method ?? "Fiat"} Top-up (Demo)`,
+      merchant: `${entry.method ?? "Fiat"} Top-up`,
       category: "topup",
       amountUsdc: Math.abs(entry.amountUsdc),
       kind,
@@ -49,7 +49,7 @@ export function ledgerEntryToTransaction(entry: LedgerEntry): Transaction {
   // simulated_payment
   return {
     id: entry.entryId,
-    merchant: `${entry.method ?? "Local"} Payment (Simulated)`,
+    merchant: `${entry.method ?? "Local"} Payment`,
     category: "shopping",
     amountUsdc: Math.abs(entry.amountUsdc),
     kind,

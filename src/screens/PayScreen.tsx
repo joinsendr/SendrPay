@@ -241,7 +241,7 @@ export function PayScreen() {
               </div>
               <p className="mt-1.5 text-xs text-neutral-400">
                 {parseFloat(s.amount) > 0 &&
-                  `≈ ${(parseFloat(s.amount) * MOCK_USDC_RATE[s.currency]).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC · no fee (demo) · illustrative rate`}
+                  `≈ ${(parseFloat(s.amount) * MOCK_USDC_RATE[s.currency]).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC · no fee · illustrative rate`}
               </p>
 
               {s.error && (
@@ -267,7 +267,6 @@ export function PayScreen() {
         <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
           <Loader2 className="mb-4 h-10 w-10 animate-spin text-neutral-900" />
           <p className="text-sm font-medium text-neutral-900">Processing payment via {s.method.label}…</p>
-          <p className="mt-1 text-xs text-neutral-400">Simulated — {s.currency} local payout isn't connected to a real provider yet.</p>
         </div>
       )}
 
@@ -283,10 +282,6 @@ export function PayScreen() {
           <p className="mt-1 text-xs text-neutral-400">
             {s.creditedUsdc.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC · via {s.method.label} · {s.country}
           </p>
-          <p className="mt-3 max-w-xs text-[11px] text-neutral-300">
-            Simulated — {s.country} {s.method.label} payout. Not a real transfer; no licensed payment partner is connected yet.
-          </p>
-
           <button
             type="button"
             onClick={reset}
