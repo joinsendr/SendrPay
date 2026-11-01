@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  User, ShieldCheck, Globe, LifeBuoy, FileText, ChevronRight, Check, LogOut,
+  User, ShieldCheck, Globe, LifeBuoy, FileText, ChevronRight, Check, LogOut, Landmark,
 } from "lucide-react";
 import { ScreenHeader } from "../components/ScreenHeader";
 import { Modal } from "../components/Modal";
+import { BankAccountModal } from "../components/BankAccountModal";
+import { getBankAccount, type BankAccount } from "../lib/bankAccountApi";
 import profilePhoto from "../assets/profile-photo.jpg";
 
 const CURRENCIES = ["USD", "INR", "CAD", "EUR", "GBP", "CHF"] as const;
@@ -37,10 +39,34 @@ function InfoRow({
   );
 }
 
+const BANK_STATUS_LABEL: Record<BankAccount["status"], string> = {
+  verified: "Verified",
+  pending_verification: "Verification pending",
+  failed: "Verification failed",
+};
+
+const BANK_STATUS_CLASS: Record<BankAccount["status"], string> = {
+  verified: "font-medium text-emerald-600",
+  pending_verification: "font-medium text-amber-600",
+  failed: "font-medium text-red-600",
+};
+
 export function SettingsScreen() {
   const [currency, setCurrency] = useState<(typeof CURRENCIES)[number]>("USD");
   const [currencyOpen, setCurrencyOpen] = useState(false);
   const [infoModal, setInfoModal] = useState<{ title: string; body: string } | null>(null);
+  const [bankAccount, setBankAccount] = useState<BankAccount | null>(null);
+  const [bankModalOpen, setBankModalOpen] = useState(false);
+
+  const refreshBankAccount = () => {
+    getBankAccount()
+      .then(setBankAccount)
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    refreshBankAccount();
+  }, []);
 
   return (
     <div className="animate-fade-up">
@@ -71,6 +97,13 @@ export function SettingsScreen() {
             value="Verified"
             valueClassName="font-medium text-emerald-600"
             onClick={() => setInfoModal({ title: "Security & verification", body: "Identity verified. Full KYC/compliance checks will be required before real payments go live." })}
+          />
+          <InfoRow
+            Icon={Landmark}
+            label="Bank account"
+            value={bankAccount ? `${BANK_STATUS_LABEL[bankAccount.status]} ${bankAccount.accountNumberMasked}` : "Not added"}
+            valueClassName={bankAccount ? BANK_STATUS_CLASS[bankAccount.status] : undefined}
+            onClick={() => setBankModalOpen(true)}
           />
           <InfoRow Icon={Globe} label="Display currency" value={currency} onClick={() => setCurrencyOpen(true)} />
           <InfoRow
@@ -115,6 +148,14 @@ export function SettingsScreen() {
           ))}
         </div>
       </Modal>
+
+      <BankAccountModal
+        open={bankModalOpen}
+        onClose={() => {
+          setBankModalOpen(false);
+          refreshBankAccount();
+        }}
+      />
 
       <Modal open={!!infoModal} onClose={() => setInfoModal(null)} title={infoModal?.title ?? ""}>
         <p className="text-sm text-neutral-500">{infoModal?.body}</p>

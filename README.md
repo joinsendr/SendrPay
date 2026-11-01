@@ -84,6 +84,9 @@ Inside **Add Balance → USDC or XLM on Stellar**, beyond scanning the QR code, 
 | `POST` | `/payments/{paymentId}/confirm` | Moves `awaiting_confirmation` → `processing` → (simulated India payout) → `succeeded`/`failed`. Only a payout success writes a ledger deduction. Idempotent — re-confirming a terminal payment just returns it unchanged. |
 | `POST` | `/payments/{paymentId}/cancel` | Cancels a payment still in `awaiting_confirmation`; no-op otherwise |
 | `POST` | `/payments/{paymentId}/reverse` | Reverses a `succeeded` payment, crediting back the full deducted amount as a new `upi_payment_reversal` ledger entry (the original debit entry is never deleted or edited — full audit trail) |
+| `GET` | `/bank-account` | The current (single) bank account on file, or `null` |
+| `POST` | `/bank-account` | Starts (or restarts) penny-drop verification for a bank account — replaces any existing pending/verified one. Returns the record including the penny-drop amount, once, at creation. |
+| `POST` | `/bank-account/verify` | Checks a submitted amount against the pending penny-drop amount. `200` + `valid: true` on match (status becomes `verified`); `400` + `valid: false` + `attemptsRemaining` on a wrong amount; account becomes `failed` after 5 wrong attempts and must be re-entered. |
 
 ### Deposit verification logic (`backend/src/depositValidation.mjs`)
 
@@ -112,6 +115,18 @@ created → validated → awaiting_confirmation → processing → succeeded | f
 - **Balance enforcement**: checked once at quote time and again immediately before the ledger deduction is written at confirm time. This narrows, but does not fully eliminate, a race between two concurrent payments from the same wallet reading a stale balance — see [Known limitations](#known-limitations).
 - **India payout** (`backend/src/indiaPayoutAdapter.mjs`) is a simulated provider behind a clean interface (`{vpa, amountInr, paymentId} → {success, payoutReference, timestamp}`) — swapping in a real licensed payout provider later means implementing this same shape, nothing upstream changes.
 - Only a successful simulated payout ever writes a ledger entry (`type: "upi_payment"`, keyed `upi:<paymentId>` for the same conditional-put idempotency guarantee used by deposits). A failed payout leaves the payment `failed` with **no** ledger entry and **no** deduction.
+
+### Bank account verification (`backend/src/bankAccounts.mjs`)
+
+A PayPal/Stripe-style penny-drop flow, intended as the precondition for a future "sell crypto for INR" payout — not currently gated anywhere in the app, since there's no sell-crypto screen yet, but the verified-account state it produces is ready for one to check.
+
+1. Customer enters account holder name, account number (+ confirmation), and IFSC code. Validated server-side (`validateBankDetails`) before anything is stored.
+2. The backend "sends" a small simulated deposit (₹0.01–₹0.99, random) and stores it server-side against a `pending_verification` record — no real bank transfer happens; this is a simulated adapter exactly like `indiaPayoutAdapter.mjs`, not a real payment rail.
+3. The customer enters the amount they "received." A match (server-side comparison; the stored amount is never returned again after creation) flips the account to `verified`. A wrong amount decrements an attempt counter (5 allowed) and is rejected; exhausting all 5 marks the account `failed` and requires starting over with `POST /bank-account`.
+4. Only one account is ever active per user — starting a new verification (`POST /bank-account` again) replaces whatever was there, matching "changing your bank account means verifying the new one the same way." The account number is never returned to the client in full, only masked (last 4 digits).
+5. Surfaced in **Settings → Bank account**, showing status (`Not added` / `Verification pending` / `Verified •••1234` / `Verification failed`) and the full flow (`src/components/BankAccountModal.tsx`).
+
+Because there's no real bank statement for a demo user to check, the penny-drop amount is returned once in the creation response and available behind an explicit "Reveal amount" toggle on the verify screen — collapsed by default so the flow still *feels* like checking an external statement, but is completable without one.
 
 ## Local development
 
@@ -145,6 +160,7 @@ Tests are a mix of:
 | `STELLAR_DEPOSIT_ADDRESS` | The wallet's Stellar testnet public key that deposits are verified against |
 | `LEDGER_TABLE` | DynamoDB table name for the ledger (defaults to `sendrpay_ledger` if unset) |
 | `PAYMENTS_TABLE` | DynamoDB table name for the payment orchestrator (defaults to `sendrpay_payments` if unset) |
+| `BANK_ACCOUNTS_TABLE` | DynamoDB table name for bank account verification (defaults to `sendrpay_bank_accounts` if unset) |
 
 No Stellar *secret* key is used by the backend — deposit verification is read-only against Horizon, so no signing key is needed or stored anywhere (not in Lambda env vars, not in the frontend, not in git).
 
@@ -193,6 +209,7 @@ Hosted on AWS S3 (`sendrpay.sendr.cash` bucket) + CloudFront, same pattern as [s
 8. Confirm the payment — it's processed through the real backend orchestrator (create → confirm → simulated payout → ledger deduction) and shows a payment ID and payout reference on success.
 9. Open the new transaction's detail view, or hit `GET /payments/{paymentId}` directly, to see the full lifecycle record.
 10. Try scanning a non-UPI QR code (any ordinary URL) to show the reject path, and try a payment larger than the current balance to show the insufficient-balance rejection.
+11. Go to **Settings → Bank account**, enter account holder name / account number / IFSC, and submit. On the verify screen, try a wrong amount first to show the attempt-counter rejection, then tap **"Reveal amount"** (standing in for checking a real bank statement) and enter the correct one — the account flips to **Verified** and shows up masked in Settings.
 
 ## Known limitations
 
@@ -203,3 +220,4 @@ Hosted on AWS S3 (`sendrpay.sendr.cash` bucket) + CloudFront, same pattern as [s
 - **UPI payments have a real orchestrator and a real ledger deduction, but a simulated payout leg** — no licensed UPI/India payout provider is connected (`backend/src/indiaPayoutAdapter.mjs`), so no real INR is ever sent and no real UPI payment is ever executed, regardless of what the simulated adapter reports.
 - **Balance-reservation race window**: balance is checked at quote time and again at confirm time, but at this prototype's scan-based-balance scale there's no atomic cross-request reservation — two concurrent payments from the same wallet could theoretically both pass their balance checks before either's deduction lands. Not a concern at single-demo-wallet, sequential-usage scale; would need an atomic conditional counter (or a real ledger/accounting system) before handling genuine concurrent load.
 - **No real UPI provider integration exists yet** — before real UPI/INR payments could be enabled: a licensed payment aggregator/PSP for India (e.g. a regulated UPI payment gateway) must be onboarded and KYC'd, `indiaPayoutAdapter.mjs`'s interface implemented against their real API, the USDC→INR conversion rate replaced with a live FX feed, real compliance/AML checks added, and the no-auth single-wallet model replaced with real per-user accounts and authentication.
+- **Bank account verification is not yet gated on anything** — there's no "sell crypto" screen in this app yet, so a verified bank account doesn't currently unlock or block any flow; it's built as the precondition for one. The penny-drop amount is simulated (no real transfer, no real bank integration) and — since there's no real bank statement for a demo user to check — is surfaced once via an explicit "Reveal amount" toggle rather than a real external channel.

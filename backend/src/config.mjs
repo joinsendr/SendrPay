@@ -20,6 +20,11 @@ export const DEPOSIT_ADDRESS = process.env.STELLAR_DEPOSIT_ADDRESS || "";
 
 export const LEDGER_TABLE = process.env.LEDGER_TABLE || "sendrpay_ledger";
 export const PAYMENTS_TABLE = process.env.PAYMENTS_TABLE || "sendrpay_payments";
+export const BANK_ACCOUNTS_TABLE = process.env.BANK_ACCOUNTS_TABLE || "sendrpay_bank_accounts";
+
+// Max wrong-amount attempts allowed on a single penny-drop verification
+// before the account must be re-entered from scratch.
+export const BANK_VERIFY_MAX_ATTEMPTS = 5;
 
 // Flat 1% fee on the USDC side of a UPI payment.
 export const UPI_FEE_RATE = 0.01;

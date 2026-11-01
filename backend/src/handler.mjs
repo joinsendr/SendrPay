@@ -6,6 +6,7 @@ import { listEntries, putEntryIfAbsent } from "./ledger.mjs";
 import { computeBalance } from "./depositValidation.mjs";
 import { checkDeposits } from "./checkDeposits.mjs";
 import { createPayment, confirmPayment, cancelPayment, reversePayment, getPayment } from "./payments.mjs";
+import { createBankAccount, verifyBankAccount, getBankAccount } from "./bankAccounts.mjs";
 
 function json(statusCode, body) {
   return {
@@ -70,6 +71,40 @@ export async function handler(event) {
         const payment = await reversePayment(paymentId);
         if (!payment) return json(404, { error: "payment_not_found" });
         return json(200, { payment, ...(await walletSnapshot()) });
+      }
+    }
+
+    // /bank-account, /bank-account/verify — single active/pending account
+    // per (demo) user; starting a new one replaces whatever was pending.
+    if (segments[0] === "bank-account") {
+      if (method === "GET" && segments.length === 1) {
+        const account = await getBankAccount();
+        return json(200, { account });
+      }
+
+      if (method === "POST" && segments.length === 1) {
+        const body = JSON.parse(event.body || "{}");
+        try {
+          const account = await createBankAccount(body);
+          return json(201, { account });
+        } catch (err) {
+          if (err.code) return json(400, { error: err.code });
+          throw err;
+        }
+      }
+
+      if (method === "POST" && segments.length === 2 && segments[1] === "verify") {
+        const body = JSON.parse(event.body || "{}");
+        if (body.amount === undefined || body.amount === null) {
+          return json(400, { error: "amount is required" });
+        }
+        const result = await verifyBankAccount(body.amount);
+        return json(result.valid ? 200 : 400, {
+          valid: result.valid,
+          account: result.record,
+          attemptsRemaining: result.attemptsRemaining,
+          reason: result.reason,
+        });
       }
     }
 
